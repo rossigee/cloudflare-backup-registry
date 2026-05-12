@@ -6,8 +6,10 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy --env \"\"",
-    "build": "wrangler deploy --dry-run --env \"\"",
+    "deploy:golder": "wrangler deploy --env golder",
+    "deploy:wardle": "wrangler deploy --env wardle",
+    "deploy:timewarp": "wrangler deploy --env timewarp",
+    "build": "wrangler deploy --dry-run --env golder",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },

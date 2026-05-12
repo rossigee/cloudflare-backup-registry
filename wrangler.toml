@@ -1,12 +1,7 @@
 name = "cloudflare-backup-registry"
-account_id = "c1b74f148aee28025816e104a92622c5"
 compatibility_date = "2025-04-01"
 main = "src/index.ts"
-workers_dev = true
-
-routes = [
-  { pattern = "backups.golder.tech", custom_domain = true }
-]
+workers_dev = false
 
 [[durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -28,6 +23,30 @@ new_classes = ["BackupRegistry"]
 
 # API tokens for backup agents (comma-separated):
 # API_TOKENS = "tok1,tok2,tok3"
+
+[env.golder]
+account_id = "c1b74f148aee28025816e104a92622c5"
+routes = [{ pattern = "backups.golder.tech", custom_domain = true }]
+
+[[env.golder.durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
+
+[env.wardle]
+account_id = "c319c02aa39a98bfaaad068b83c0b179"
+routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
+
+[[env.wardle.durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
+
+[env.timewarp]
+account_id = "bd32abceb7ddba1b066a11732ae38c2f"
+routes = [{ pattern = "backups.timewarp.ws", custom_domain = true }]
+
+[[env.timewarp.durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
 
 [env.testing]
 vars = { AUTH_USER = "testuser", AUTH_PASS = "testpass", API_TOKENS = "test-api-token" }
