@@ -1,0 +1,36 @@
+name = "cloudflare-backup-registry"
+compatibility_date = "2025-04-01"
+main = "src/index.ts"
+workers_dev = true
+
+routes = [
+  { pattern = "backup-registry.golder.tech", custom_domain = true }
+]
+
+[[durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["BackupRegistry"]
+
+# Basic auth for the UI and API:
+# [vars]
+# AUTH_USER = "admin"
+# AUTH_PASS = "your-secure-password"
+
+# JWT/OIDC authentication (overrides basic auth):
+# JWT_ISSUER = "https://accounts.google.com"
+# JWT_AUDIENCE = "your-client-id.apps.googleusercontent.com"
+# JWKS_URI = ""  # defaults to {issuer}/.well-known/jwks.json
+
+# API tokens for backup agents (comma-separated):
+# API_TOKENS = "tok1,tok2,tok3"
+
+[env.testing]
+vars = { AUTH_USER = "testuser", AUTH_PASS = "testpass", API_TOKENS = "test-api-token" }
+
+[[env.testing.durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
