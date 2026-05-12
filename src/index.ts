@@ -414,6 +414,24 @@ async function handleDocs(): Promise<Response> {
   </div>
 
   <div class="section">
+    <div class="section-header"><h2>Authentication</h2></div>
+    <div class="section-content">
+      <p>Three methods are supported (checked in order):</p>
+      <ul>
+        <li><strong>Bearer token</strong> — <code>Authorization: Bearer &lt;token&gt;</code> (API token or JWT)</li>
+        <li><strong>X-API-Key header</strong> — <code>X-API-Key: &lt;token&gt;</code></li>
+        <li><strong>Basic auth</strong> — <code>Authorization: Basic &lt;base64(user:pass)&gt;</code></li>
+      </ul>
+      <p>Set <code>API_TOKENS</code> (comma-separated) as a Cloudflare Secret for agent authentication.<br>
+      Set <code>AUTH_USER</code> / <code>AUTH_PASS</code> for UI/admin access.</p>
+      <pre>npx wrangler secret put API_TOKENS
+npx wrangler secret put AUTH_USER
+npx wrangler secret put AUTH_PASS</pre>
+      <p>Authentication is bypassed for localhost requests (development/testing).</p>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-header"><h2>Submit a Backup Run</h2></div>
     <div class="section-content">
       <p><span class="method-badge POST">POST</span><code>/v1/backup-runs</code></p>
@@ -477,24 +495,6 @@ async function handleDocs(): Promise<Response> {
       <p>Removes the run record. Returns <code>204 No Content</code>.</p>
       <pre>curl -s -X DELETE "https://backup-registry.golder.tech/v1/backup-runs/550e8400-e29b-41d4-a716-446655440000" \\
   -H "Authorization: Bearer &lt;token&gt;"</pre>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-header"><h2>Authentication</h2></div>
-    <div class="section-content">
-      <p>Three methods are supported (checked in order):</p>
-      <ul>
-        <li><strong>Bearer token</strong> — <code>Authorization: Bearer &lt;token&gt;</code> (API token or JWT)</li>
-        <li><strong>X-API-Key header</strong> — <code>X-API-Key: &lt;token&gt;</code></li>
-        <li><strong>Basic auth</strong> — <code>Authorization: Basic &lt;base64(user:pass)&gt;</code></li>
-      </ul>
-      <p>Set <code>API_TOKENS</code> (comma-separated) as a Cloudflare Secret for agent authentication.<br>
-      Set <code>AUTH_USER</code> / <code>AUTH_PASS</code> for UI/admin access.</p>
-      <pre>npx wrangler secret put API_TOKENS
-npx wrangler secret put AUTH_USER
-npx wrangler secret put AUTH_PASS</pre>
-      <p>Authentication is bypassed for localhost requests (development/testing).</p>
     </div>
   </div>
 
