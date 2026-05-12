@@ -9,7 +9,7 @@ class_name = "BackupRegistry"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["BackupRegistry"]
+new_sqlite_classes = ["BackupRegistry"]
 
 # Basic auth for the UI and API:
 # [vars]
