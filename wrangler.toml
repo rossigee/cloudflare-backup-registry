@@ -1,10 +1,11 @@
 name = "cloudflare-backup-registry"
+account_id = "c1b74f148aee28025816e104a92622c5"
 compatibility_date = "2025-04-01"
 main = "src/index.ts"
 workers_dev = true
 
 routes = [
-  { pattern = "backup-registry.golder.tech", custom_domain = true }
+  { pattern = "backups.golder.tech", custom_domain = true }
 ]
 
 [[durable_objects.bindings]]
