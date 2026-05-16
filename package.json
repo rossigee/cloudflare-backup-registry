@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-backup-registry",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Cloudflare Workers-based backup run registry",
   "type": "module",
   "main": "src/index.ts",
