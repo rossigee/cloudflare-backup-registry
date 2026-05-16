@@ -7,9 +7,17 @@ workers_dev = false
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
 
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["BackupRegistry"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RateLimiter"]
 
 # Basic auth for the UI and API:
 # [vars]
@@ -27,26 +35,41 @@ new_sqlite_classes = ["BackupRegistry"]
 [env.golder]
 account_id = "c1b74f148aee28025816e104a92622c5"
 routes = [{ pattern = "backups.golder.tech", custom_domain = true }]
+vars = { SITE_NAME = "Golder Backups" }
 
 [[env.golder.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
 
+[[env.golder.durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
 [env.wardle]
 account_id = "c319c02aa39a98bfaaad068b83c0b179"
 routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
+vars = { SITE_NAME = "Wardle Backups" }
 
 [[env.wardle.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
 
+[[env.wardle.durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
 [env.timewarp]
 account_id = "bd32abceb7ddba1b066a11732ae38c2f"
 routes = [{ pattern = "backups.timewarp.ws", custom_domain = true }]
+vars = { SITE_NAME = "Timewarp Backups" }
 
 [[env.timewarp.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
+
+[[env.timewarp.durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
 
 [env.testing]
 vars = { AUTH_USER = "testuser", AUTH_PASS = "testpass", API_TOKENS = "test-api-token" }

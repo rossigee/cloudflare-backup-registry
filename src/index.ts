@@ -1,11 +1,51 @@
-import { BackupRegistry, Env, BackupRun, BackupStatus, EncryptionStatus, MAX_BODY_SIZE } from './durable-object';
+import { BackupRegistry, RateLimiter, Env, BackupRun, BackupStatus, EncryptionStatus, MAX_BODY_SIZE } from './durable-object';
 import { authenticate, unauthorized } from './auth';
 
-export { BackupRegistry };
+export { BackupRegistry, RateLimiter };
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
+
+const FAVICON_B64 = 'AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 const VALID_STATUSES: BackupStatus[] = ['success', 'failure', 'partial'];
 const VALID_ENC_STATUSES: EncryptionStatus[] = ['encrypted', 'unencrypted', 'partial', 'failed'];
+
+const RATE_LIMITS = { write: 30, read: 120 } as const;
+
+function getRateLimiter(env: Env): DurableObjectStub<RateLimiter> {
+  return env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName('global'));
+}
+
+async function checkRateLimit(request: Request, env: Env, endpoint: 'read' | 'write'): Promise<Response | null> {
+  const ip = request.headers.get('CF-Connecting-IP');
+  if (!ip) return null; // no CF header = local dev, skip
+  const limit = RATE_LIMITS[endpoint];
+  const resp = await getRateLimiter(env).fetch('http://rl/check', {
+    method: 'POST',
+    body: JSON.stringify({ ip, endpoint, limit }),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (resp.status !== 429) return null;
+  const reset = resp.headers.get('X-RateLimit-Reset') || '';
+  return new Response('Too Many Requests', {
+    status: 429,
+    headers: {
+      'Content-Type': 'text/plain',
+      'Retry-After': '60',
+      'X-RateLimit-Limit': String(limit),
+      'X-RateLimit-Remaining': '0',
+      ...(reset ? { 'X-RateLimit-Reset': reset } : {}),
+    },
+  });
+}
+
+
+function getSiteName(request: Request, env: Env): string {
+  if (env.SITE_NAME) return env.SITE_NAME;
+  const host = new URL(request.url).hostname;
+  if (host === 'localhost' || host === '127.0.0.1') return 'Backup Registry';
+  // Strip leading 'backups.' prefix if present, e.g. backups.golder.tech → golder.tech
+  return host.replace(/^backups\./, '');
+}
 
 function getStore(env: Env): DurableObjectStub<BackupRegistry> {
   const id = env.BACKUP_STORE.idFromName('registry');
@@ -86,6 +126,10 @@ function validatePayload(data: unknown): ValidationResult {
   if (d.error !== undefined && d.error !== null && typeof d.error !== 'string') {
     return { ok: false, error: 'error must be a string or null' };
   }
+  if (d.backup_url !== undefined && d.backup_url !== null) {
+    if (typeof d.backup_url !== 'string') return { ok: false, error: 'backup_url must be a string' };
+    try { new URL(d.backup_url); } catch { return { ok: false, error: 'backup_url must be a valid URL' }; }
+  }
   if (d.metadata !== undefined && (typeof d.metadata !== 'object' || d.metadata === null || Array.isArray(d.metadata))) {
     return { ok: false, error: 'metadata must be a plain object' };
   }
@@ -103,6 +147,7 @@ function validatePayload(data: unknown): ValidationResult {
       encrypted: d.encrypted as boolean | undefined,
       encryption_status: d.encryption_status as EncryptionStatus | undefined,
       error: d.error as string | null | undefined,
+      backup_url: d.backup_url as string | undefined,
       metadata: d.metadata as Record<string, unknown> | undefined,
     },
   };
@@ -175,62 +220,128 @@ function encBadge(status?: EncryptionStatus): string {
   return `<span class="badge ${classes[status] || ''}">${escapeHtml(status)}</span>`;
 }
 
-async function handleUI(request: Request, env: Env): Promise<Response> {
+async function handleUI(request: Request, env: Env, siteName: string, docsUrl: string): Promise<Response> {
   const url = new URL(request.url);
   const filterAgent = url.searchParams.get('agent_id') || '';
   const filterJob = url.searchParams.get('job_name') || '';
   const filterStatus = url.searchParams.get('status') || '';
   const limit = url.searchParams.get('limit') || '100';
-
-  const params = new URLSearchParams();
-  if (filterAgent) params.set('agent_id', filterAgent);
-  if (filterJob) params.set('job_name', filterJob);
-  if (filterStatus) params.set('status', filterStatus);
-  params.set('limit', limit);
+  const isFiltered = !!(filterAgent || filterJob || filterStatus);
 
   const store = getStore(env);
-  const resp = await store.fetch(`http://do/list?${params}`);
-  const runs: BackupRun[] = await resp.json();
 
-  const totalSuccess = runs.filter(r => r.status === 'success').length;
-  const totalFailure = runs.filter(r => r.status === 'failure').length;
-  const totalPartial = runs.filter(r => r.status === 'partial').length;
+  interface DisplayRow { run: BackupRun; historyCount?: number }
+  let displayRows: DisplayRow[];
+
+  if (isFiltered) {
+    // Fetch all runs (only push status filter to DO; do string matching here for partial/case-insensitive support)
+    const params = new URLSearchParams();
+    if (filterStatus) params.set('status', filterStatus);
+    params.set('limit', '1000');
+    const resp = await store.fetch(`http://do/list?${params}`);
+    let allRuns: BackupRun[] = await resp.json();
+
+    if (filterAgent) {
+      const agentLower = filterAgent.toLowerCase();
+      allRuns = allRuns.filter(r => r.agent_id.toLowerCase().includes(agentLower));
+    }
+    if (filterJob) {
+      const jobLower = filterJob.toLowerCase();
+      allRuns = allRuns.filter(r => r.job_name.toLowerCase().includes(jobLower));
+    }
+
+    displayRows = allRuns.slice(0, parseInt(limit, 10)).map(run => ({ run }));
+  } else {
+    // Default view: fetch all runs, group by job_name, show latest per job + history count
+    const resp = await store.fetch(`http://do/list?limit=1000`);
+    const allRuns: BackupRun[] = await resp.json();
+
+    const jobMap = new Map<string, { latest: BackupRun; count: number }>();
+    for (const run of allRuns) {
+      const existing = jobMap.get(run.job_name);
+      if (!existing) {
+        jobMap.set(run.job_name, { latest: run, count: 1 });
+      } else {
+        existing.count++;
+        if (new Date(run.received_at) > new Date(existing.latest.received_at)) {
+          existing.latest = run;
+        }
+      }
+    }
+
+    displayRows = Array.from(jobMap.values())
+      .sort((a, b) => new Date(b.latest.received_at).getTime() - new Date(a.latest.received_at).getTime())
+      .map(({ latest, count }) => ({ run: latest, historyCount: count }));
+  }
+
+  const totalSuccess = displayRows.filter(r => r.run.status === 'success').length;
+  const totalFailure = displayRows.filter(r => r.run.status === 'failure').length;
+  const totalPartial = displayRows.filter(r => r.run.status === 'partial').length;
 
   const statusOptions = ['', 'success', 'failure', 'partial']
     .map(s => `<option value="${s}"${filterStatus === s ? ' selected' : ''}>${s || 'All statuses'}</option>`)
     .join('');
 
+  const colspan = isFiltered ? 9 : 10;
   let rows = '';
-  if (runs.length === 0) {
-    rows = '<tr><td colspan="9" class="empty">No backup runs found.</td></tr>';
+  if (displayRows.length === 0) {
+    rows = `<tr><td colspan="${colspan}" class="empty">No backup runs found.</td></tr>`;
   } else {
-    for (const run of runs) {
+    for (const { run, historyCount } of displayRows) {
       const errCell = run.error
         ? `<span class="error-text" title="${escapeHtml(run.error)}">${escapeHtml(run.error.substring(0, 60))}${run.error.length > 60 ? '…' : ''}</span>`
         : '—';
+      const jobCell = isFiltered
+        ? `<strong>${escapeHtml(run.job_name)}</strong>`
+        : `<a href="/?job_name=${encodeURIComponent(run.job_name)}" class="job-link"><strong>${escapeHtml(run.job_name)}</strong></a>`;
+      const historyCell = historyCount !== undefined
+        ? `<a href="/?job_name=${encodeURIComponent(run.job_name)}" class="history-link" title="View all runs for this job">${historyCount} run${historyCount !== 1 ? 's' : ''}</a>`
+        : '';
+      const durationMs = new Date(run.end_time).getTime() - new Date(run.start_time).getTime();
+      const durationSort = isNaN(durationMs) || durationMs < 0 ? -1 : durationMs;
       rows += `<tr>
-        <td><strong>${escapeHtml(run.job_name)}</strong></td>
-        <td>${escapeHtml(run.agent_id)}</td>
-        <td>${statusBadge(run.status)}</td>
-        <td>${escapeHtml(formatTime(run.start_time))}</td>
-        <td>${escapeHtml(formatDuration(run.start_time, run.end_time))}</td>
-        <td>${escapeHtml(formatBytes(run.bytes_backed_up))}</td>
-        <td>${encBadge(run.encryption_status)}</td>
-        <td>${errCell}</td>
+        <td data-sort="${escapeHtml(run.job_name.toLowerCase())}">${jobCell}</td>
+        <td data-sort="${escapeHtml(run.agent_id.toLowerCase())}">${escapeHtml(run.agent_id)}</td>
+        <td data-sort="${escapeHtml(run.status)}">${statusBadge(run.status)}</td>
+        <td data-sort="${escapeHtml(run.start_time)}">${escapeHtml(formatTime(run.start_time))}</td>
+        <td data-sort="${durationSort}">${escapeHtml(formatDuration(run.start_time, run.end_time))}</td>
+        <td data-sort="${run.bytes_backed_up ?? -1}">${escapeHtml(formatBytes(run.bytes_backed_up))}</td>
+        <td data-sort="${escapeHtml(run.encryption_status || '')}">${encBadge(run.encryption_status)}</td>
+        <td data-sort="${escapeHtml(run.error || '')}">${errCell}</td>
+        ${!isFiltered ? `<td class="history-col" data-sort="${historyCount ?? 0}">${historyCell}</td>` : ''}
         <td class="actions">
-          <button class="btn-view" onclick="viewRun(${JSON.stringify(run.run_id)})">View</button>
+          <a class="btn-view" href="/run/${encodeURIComponent(run.run_id)}">View</a>
+          ${run.backup_url ? `<a class="btn-download" href="${escapeHtml(run.backup_url)}" target="_blank" rel="noopener noreferrer">Download</a>` : ''}
           <button class="btn-del" onclick="delRun(${JSON.stringify(run.run_id)})">Delete</button>
         </td>
       </tr>`;
     }
   }
 
+  const tableCaption = isFiltered
+    ? `<p class="table-caption">${displayRows.length} run${displayRows.length !== 1 ? 's' : ''} matching filter &mdash; <a href="/">Back to overview</a></p>`
+    : `<p class="table-caption">Latest backup per job &mdash; click job name or run count to see full history</p>`;
+
+  const statLabel = isFiltered ? 'Runs' : 'Jobs';
+  const noStatusParams = new URLSearchParams();
+  if (filterAgent) noStatusParams.set('agent_id', filterAgent);
+  if (filterJob) noStatusParams.set('job_name', filterJob);
+  const noStatusHref = '/?' + noStatusParams.toString() || '/';
+  const statusHref = (s: string) => {
+    const p = new URLSearchParams(noStatusParams);
+    p.set('status', s);
+    return '/?' + p.toString();
+  };
+  const theadExtra = isFiltered ? '' : '<th class="sortable" data-col="8" onclick="sortTable(8)">History</th>';
+  const startTimeHeader = isFiltered ? 'Start Time' : 'Last Run';
+
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Backup Registry</title>
+  <title>${escapeHtml(siteName)} — Backup Registry</title>
+  <link rel="icon" href="/favicon.ico">
   <style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #1a1a1a; color: #e0e0e0; }
@@ -241,6 +352,8 @@ async function handleUI(request: Request, env: Env): Promise<Response> {
     .stat-card { background: #2d2d2d; border: 1px solid #444; border-radius: 8px; padding: 12px 20px; text-align: center; min-width: 100px; }
     .stat-card .count { font-size: 28px; font-weight: 700; }
     .stat-card .label { font-size: 12px; color: #aaa; text-transform: uppercase; }
+    a.stat-link { text-decoration: none; cursor: pointer; }
+    a.stat-link:hover { border-color: #888; background: #333; }
     .count-total { color: #e0e0e0; }
     .count-success { color: #81c784; }
     .count-failure { color: #e57373; }
@@ -252,6 +365,11 @@ async function handleUI(request: Request, env: Env): Promise<Response> {
     .filter-form button:hover { background: #81d4fa; }
     .filter-form a { font-size: 12px; color: #aaa; text-decoration: none; align-self: center; }
     .filter-form a:hover { color: #e0e0e0; }
+    .btn-clear { background: #444; border: 1px solid #666; border-radius: 4px; padding: 7px 16px; color: #e0e0e0 !important; font-size: 13px; font-weight: 600; align-self: flex-end; }
+    .btn-clear:hover { background: #555; color: #e0e0e0 !important; }
+    .table-caption { margin: 0 0 8px 0; font-size: 13px; color: #888; }
+    .table-caption a { color: #4fc3f7; text-decoration: none; }
+    .table-caption a:hover { text-decoration: underline; }
     table { width: 100%; border-collapse: collapse; background: #2d2d2d; border: 1px solid #444; border-radius: 8px; overflow: hidden; }
     th { background: #333; padding: 10px 12px; text-align: left; font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #555; }
     td { padding: 9px 12px; border-bottom: 1px solid #333; font-size: 13px; vertical-align: middle; }
@@ -266,39 +384,54 @@ async function handleUI(request: Request, env: Env): Promise<Response> {
     .error-text { color: #e57373; font-size: 12px; }
     .empty { color: #888; font-style: italic; text-align: center; padding: 24px; }
     .actions { white-space: nowrap; }
-    .actions button { background: #444; border: 1px solid #666; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; color: #e0e0e0; margin-left: 4px; }
-    .actions button:hover { background: #555; }
+    .actions button, .actions a { background: #444; border: 1px solid #666; border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; color: #e0e0e0; margin-left: 4px; text-decoration: none; display: inline-block; }
+    .actions button:hover, .actions a:hover { background: #555; }
     .btn-del:hover { color: #e57373; border-color: #e57373; }
     .btn-view:hover { color: #4fc3f7; border-color: #4fc3f7; }
+    .btn-download { color: #81c784 !important; border-color: #388e3c !important; }
+    .btn-download:hover { background: #1b3a1b !important; }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: #e0e0e0; background: #3a3a3a; }
+    th.sortable::after { content: ' ⇕'; opacity: 0.25; font-size: 10px; }
+    th.sort-asc::after { content: ' ▲'; opacity: 1; }
+    th.sort-desc::after { content: ' ▼'; opacity: 1; }
+    .job-link { color: #e0e0e0; text-decoration: none; }
+    .job-link:hover { color: #4fc3f7; }
+    .history-col { white-space: nowrap; }
+    .history-link { color: #888; font-size: 12px; text-decoration: none; border: 1px solid #555; border-radius: 10px; padding: 1px 8px; }
+    .history-link:hover { color: #4fc3f7; border-color: #4fc3f7; }
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .footer { margin-top: 20px; font-size: 12px; color: #888; text-align: center; padding: 16px; border-top: 1px solid #444; }
     .footer-nav { margin-bottom: 12px; display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
     .footer-nav a { color: #4fc3f7; text-decoration: none; font-size: 13px; padding: 4px 8px; border-radius: 4px; }
     .footer-nav a:hover { background-color: #333; }
-    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
-    .modal-overlay.active { display: flex; }
-    .modal { background: #2d2d2d; border: 1px solid #555; border-radius: 8px; padding: 24px; max-width: 680px; width: 90%; max-height: 80vh; overflow-y: auto; }
-    .modal h2 { margin: 0 0 16px 0; color: #4fc3f7; font-size: 18px; }
-    .modal pre { background: #1a1a1a; border: 1px solid #444; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; color: #e0e0e0; }
-    .modal-close { float: right; background: #444; border: 1px solid #666; border-radius: 4px; padding: 4px 12px; cursor: pointer; color: #e0e0e0; font-size: 13px; }
-    .modal-close:hover { background: #555; }
+    @media (max-width: 700px) {
+      body { padding: 12px; }
+      h1 { font-size: 20px; }
+      .stats { flex-wrap: wrap; gap: 8px; }
+      .stat-card { min-width: 70px; padding: 8px 12px; }
+      .stat-card .count { font-size: 22px; }
+      .filter-form { gap: 8px; padding: 10px 12px; }
+      .filter-form input, .filter-form select { min-width: 0; }
+      table { min-width: 640px; font-size: 12px; }
+      td, th { padding: 7px 8px; }
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="header-left">
-      <h1>Backup Registry</h1>
+      <h1>${escapeHtml(siteName)}</h1>
       <p>Backup run reports from registered agents</p>
     </div>
-    <div>
-      <a href="/docs" style="color: #4fc3f7; text-decoration: none; font-size: 14px;">API Docs</a>
-    </div>
+    ${docsUrl ? `<div><a href="${escapeHtml(docsUrl)}" target="_blank" rel="noopener noreferrer" style="color:#4fc3f7;text-decoration:none;font-size:14px;">Docs</a></div>` : ''}
   </div>
 
   <div class="stats">
-    <div class="stat-card"><div class="count count-total">${runs.length}</div><div class="label">Shown</div></div>
-    <div class="stat-card"><div class="count count-success">${totalSuccess}</div><div class="label">Success</div></div>
-    <div class="stat-card"><div class="count count-failure">${totalFailure}</div><div class="label">Failure</div></div>
-    <div class="stat-card"><div class="count count-partial">${totalPartial}</div><div class="label">Partial</div></div>
+    <a class="stat-card stat-link" href="${noStatusHref}"><div class="count count-total">${displayRows.length}</div><div class="label">${statLabel}</div></a>
+    <a class="stat-card stat-link" href="${statusHref('success')}"><div class="count count-success">${totalSuccess}</div><div class="label">Success</div></a>
+    <a class="stat-card stat-link" href="${statusHref('failure')}"><div class="count count-failure">${totalFailure}</div><div class="label">Failure</div></a>
+    <a class="stat-card stat-link" href="${statusHref('partial')}"><div class="count count-partial">${totalPartial}</div><div class="label">Partial</div></a>
   </div>
 
   <form class="filter-form" method="get" action="/">
@@ -307,50 +440,52 @@ async function handleUI(request: Request, env: Env): Promise<Response> {
     <label>Status <select name="status">${statusOptions}</select></label>
     <label>Limit <input type="number" name="limit" value="${escapeHtml(limit)}" min="1" max="1000" style="min-width:80px;"></label>
     <button type="submit">Filter</button>
-    ${filterAgent || filterJob || filterStatus ? '<a href="/">Clear</a>' : ''}
+    ${isFiltered ? '<a href="/" class="btn-clear">Clear</a>' : ''}
   </form>
 
+  ${tableCaption}
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
-        <th>Job</th>
-        <th>Agent</th>
-        <th>Status</th>
-        <th>Start Time</th>
-        <th>Duration</th>
-        <th>Size</th>
-        <th>Encryption</th>
-        <th>Error</th>
+        <th class="sortable" data-col="0" onclick="sortTable(0)">Job</th>
+        <th class="sortable" data-col="1" onclick="sortTable(1)">Agent</th>
+        <th class="sortable" data-col="2" onclick="sortTable(2)">Status</th>
+        <th class="sortable" data-col="3" onclick="sortTable(3)">${startTimeHeader}</th>
+        <th class="sortable" data-col="4" onclick="sortTable(4)">Duration</th>
+        <th class="sortable" data-col="5" onclick="sortTable(5)">Size</th>
+        <th class="sortable" data-col="6" onclick="sortTable(6)">Encryption</th>
+        <th class="sortable" data-col="7" onclick="sortTable(7)">Error</th>
+        ${theadExtra}
         <th></th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>
   </table>
-
-  <div class="modal-overlay" id="modal">
-    <div class="modal">
-      <button class="modal-close" onclick="closeModal()">Close</button>
-      <h2>Run Details</h2>
-      <pre id="modal-content"></pre>
-    </div>
   </div>
 
   <script>
-    function viewRun(runId) {
-      fetch('/v1/backup-runs/' + encodeURIComponent(runId))
-        .then(r => r.json())
-        .then(data => {
-          document.getElementById('modal-content').textContent = JSON.stringify(data, null, 2);
-          document.getElementById('modal').classList.add('active');
-        })
-        .catch(e => alert('Error: ' + e.message));
+    let _sortCol = -1, _sortDir = 1;
+    function sortTable(col) {
+      _sortDir = (_sortCol === col) ? -_sortDir : 1;
+      _sortCol = col;
+      const tbody = document.querySelector('table tbody');
+      const rows = Array.from(tbody.rows);
+      if (rows.length <= 1) return;
+      rows.sort((a, b) => {
+        const aCell = a.cells[col], bCell = b.cells[col];
+        if (!aCell || !bCell) return 0;
+        const aVal = aCell.dataset.sort ?? '', bVal = bCell.dataset.sort ?? '';
+        const aNum = parseFloat(aVal), bNum = parseFloat(bVal);
+        if (!isNaN(aNum) && !isNaN(bNum)) return (aNum - bNum) * _sortDir;
+        return aVal.localeCompare(bVal) * _sortDir;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+      document.querySelectorAll('th.sortable').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (parseInt(th.dataset.col) === col) th.classList.add(_sortDir === 1 ? 'sort-asc' : 'sort-desc');
+      });
     }
-    function closeModal() {
-      document.getElementById('modal').classList.remove('active');
-    }
-    document.getElementById('modal').addEventListener('click', e => {
-      if (e.target === document.getElementById('modal')) closeModal();
-    });
     async function delRun(runId) {
       if (!confirm('Delete this backup run record?')) return;
       try {
@@ -365,6 +500,7 @@ async function handleUI(request: Request, env: Env): Promise<Response> {
     <div class="footer-nav">
       <a href="/">Home</a>
       <a href="/v1/backup-runs">API</a>
+      <a href="/metrics">Metrics</a>
       <a href="/health">Health</a>
       <a href="/docs">Docs</a>
     </div>
@@ -448,6 +584,7 @@ npx wrangler secret put AUTH_PASS</pre>
   "encrypted": true,                                    // optional
   "encryption_status": "encrypted",                     // optional — encrypted|unencrypted|partial|failed
   "error": null,                                        // optional — string or null
+  "backup_url": "https://s3.example.com/backup.tar.gz", // optional — download URL for the backup
   "metadata": { "compression": "zstd" }                // optional — arbitrary object
 }</pre>
       <h3>Example</h3>
@@ -498,10 +635,51 @@ npx wrangler secret put AUTH_PASS</pre>
     </div>
   </div>
 
+  <div class="section">
+    <div class="section-header"><h2>Prometheus Metrics</h2></div>
+    <div class="section-content">
+      <p><span class="method-badge GET">GET</span><code>/metrics</code></p>
+      <p>Returns Prometheus-format metrics.</p>
+      <h3>Backup metrics — latest run per job</h3>
+      <ul>
+        <li><code>backup_last_run_timestamp_seconds</code>{job_name, agent_id} — Unix timestamp when the latest run ended</li>
+        <li><code>backup_last_run_success</code>{job_name, agent_id} — <code>1</code> success, <code>0.5</code> partial, <code>0</code> failure</li>
+        <li><code>backup_last_run_duration_seconds</code>{job_name, agent_id} — duration of the latest run</li>
+        <li><code>backup_last_run_bytes</code>{job_name, agent_id} — bytes backed up (omitted if not reported)</li>
+      </ul>
+      <h3>Rate limit metrics — abuse monitoring</h3>
+      <ul>
+        <li><code>ratelimit_requests_current</code>{ip, endpoint} — request count per IP over the current and previous minute (top 100)</li>
+      </ul>
+      <pre>curl -s "https://backup-registry.golder.tech/metrics" \\
+  -H "Authorization: Bearer &lt;token&gt;"</pre>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header"><h2>Rate Limiting</h2></div>
+    <div class="section-content">
+      <p>All authenticated endpoints are rate-limited per client IP:</p>
+      <ul>
+        <li><strong>Write</strong> (<code>POST /v1/backup-runs</code>) — <strong>30 requests/minute</strong></li>
+        <li><strong>Read</strong> (all other endpoints) — <strong>120 requests/minute</strong></li>
+      </ul>
+      <p>Exceeded limits return <code>429 Too Many Requests</code> with the following headers:</p>
+      <ul>
+        <li><code>Retry-After: 60</code></li>
+        <li><code>X-RateLimit-Limit</code> — the applicable limit</li>
+        <li><code>X-RateLimit-Remaining: 0</code></li>
+        <li><code>X-RateLimit-Reset</code> — Unix timestamp of the next window</li>
+      </ul>
+      <p>Rate limiting is bypassed for localhost requests (development/testing).</p>
+    </div>
+  </div>
+
   <div class="footer">
     <div class="footer-nav">
       <a href="/">Home</a>
       <a href="/v1/backup-runs">API</a>
+      <a href="/metrics">Metrics</a>
       <a href="/health">Health</a>
       <a href="/docs">Docs</a>
     </div>
@@ -511,6 +689,169 @@ npx wrangler secret put AUTH_PASS</pre>
 </html>`;
 
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+function handleFavicon(): Response {
+  const bytes = Uint8Array.from(atob(FAVICON_B64), c => c.charCodeAt(0));
+  return new Response(bytes, {
+    headers: { 'Content-Type': 'image/x-icon', 'Cache-Control': 'public, max-age=86400' },
+  });
+}
+
+async function handleRunDetail(runId: string, env: Env): Promise<Response> {
+  const store = getStore(env);
+  const resp = await store.fetch(`http://do/get/${encodeURIComponent(runId)}`);
+  if (!resp.ok) return new Response('Run not found', { status: 404 });
+  const run: BackupRun = await resp.json();
+
+  const field = (label: string, value: string) =>
+    `<div class="field"><span class="field-label">${label}</span><span class="field-value">${value}</span></div>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(run.job_name)} — Backup Run</title>
+  <link rel="icon" href="/favicon.ico">
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background: #1a1a1a; color: #e0e0e0; max-width: 800px; }
+    h1 { margin: 0 0 4px 0; color: #4fc3f7; font-size: 22px; word-break: break-all; }
+    .back { color: #4fc3f7; text-decoration: none; font-size: 13px; display: inline-block; margin-bottom: 16px; }
+    .back:hover { text-decoration: underline; }
+    .card { background: #2d2d2d; border: 1px solid #444; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .card h2 { margin: 0 0 14px 0; font-size: 14px; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #444; padding-bottom: 8px; }
+    .field { display: flex; padding: 7px 0; border-bottom: 1px solid #333; font-size: 13px; gap: 12px; }
+    .field:last-child { border-bottom: none; }
+    .field-label { color: #888; min-width: 140px; flex-shrink: 0; }
+    .field-value { color: #e0e0e0; word-break: break-all; }
+    .badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .badge-success { background: #1b5e20; color: #a5d6a7; border: 1px solid #388e3c; }
+    .badge-failure { background: #b71c1c; color: #ffcdd2; border: 1px solid #d32f2f; }
+    .badge-partial { background: #e65100; color: #ffe0b2; border: 1px solid #f57c00; }
+    .badge-encrypted { background: #1b5e20; color: #a5d6a7; border: 1px solid #388e3c; }
+    .badge-unencrypted { background: #b71c1c; color: #ffcdd2; border: 1px solid #d32f2f; }
+    .error-box { background: #2a1010; border: 1px solid #d32f2f; border-radius: 6px; padding: 12px; color: #e57373; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+    pre { background: #1a1a1a; border: 1px solid #444; padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px; color: #e0e0e0; margin: 0; }
+    .actions { display: flex; gap: 10px; margin-top: 16px; }
+    .btn { border-radius: 4px; padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; border: 1px solid; display: inline-block; }
+    .btn-del { background: #2a1010; border-color: #d32f2f; color: #e57373; }
+    .btn-del:hover { background: #3a1515; }
+    .btn-download-lg { background: #1b3a1b; border-color: #388e3c; color: #81c784; }
+    .btn-download-lg:hover { background: #234a23; }
+    @media (max-width: 480px) {
+      .field { flex-direction: column; gap: 2px; }
+      .field-label { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="/?job_name=${encodeURIComponent(run.job_name)}">&larr; Back to ${escapeHtml(run.job_name)} history</a>
+  <h1>${escapeHtml(run.job_name)}</h1>
+  <p style="color:#888;font-size:13px;margin:4px 0 20px 0;">Run ID: ${escapeHtml(run.run_id)}</p>
+
+  <div class="card">
+    <h2>Summary</h2>
+    ${field('Status', statusBadge(run.status))}
+    ${field('Agent', escapeHtml(run.agent_id))}
+    ${field('Start time', escapeHtml(formatTime(run.start_time)))}
+    ${field('End time', escapeHtml(formatTime(run.end_time)))}
+    ${field('Duration', escapeHtml(formatDuration(run.start_time, run.end_time)))}
+    ${field('Size', escapeHtml(formatBytes(run.bytes_backed_up)))}
+    ${field('Encryption', encBadge(run.encryption_status))}
+    ${field('Received at', escapeHtml(formatTime(run.received_at)))}
+    ${run.backup_url ? field('Backup URL', `<a href="${escapeHtml(run.backup_url)}" target="_blank" rel="noopener noreferrer" style="color:#4fc3f7;word-break:break-all;">${escapeHtml(run.backup_url)}</a>`) : ''}
+  </div>
+
+  ${run.error ? `<div class="card"><h2>Error</h2><div class="error-box">${escapeHtml(run.error)}</div></div>` : ''}
+
+  ${run.metadata ? `<div class="card"><h2>Metadata</h2><pre>${escapeHtml(JSON.stringify(run.metadata, null, 2))}</pre></div>` : ''}
+
+  <div class="actions">
+    ${run.backup_url ? `<a class="btn btn-download-lg" href="${escapeHtml(run.backup_url)}" target="_blank" rel="noopener noreferrer">Download backup</a>` : ''}
+    <button class="btn btn-del" onclick="delRun(${JSON.stringify(run.run_id)})">Delete this run</button>
+  </div>
+
+  <script>
+    async function delRun(runId) {
+      if (!confirm('Delete this backup run record?')) return;
+      try {
+        const r = await fetch('/v1/backup-runs/' + encodeURIComponent(runId), { method: 'DELETE' });
+        if (r.ok) window.location.href = '/';
+        else alert('Delete failed: ' + r.status);
+      } catch(e) { alert('Error: ' + e.message); }
+    }
+  </script>
+</body>
+</html>`;
+
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+function promLabel(v: string): string {
+  return v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+}
+
+async function handleMetrics(env: Env): Promise<Response> {
+  const store = getStore(env);
+  const resp = await store.fetch(`http://do/list?limit=1000`);
+  const allRuns: BackupRun[] = await resp.json();
+
+  // Group by job_name, keep latest per job
+  const jobMap = new Map<string, BackupRun>();
+  for (const run of allRuns) {
+    const existing = jobMap.get(run.job_name);
+    if (!existing || new Date(run.received_at) > new Date(existing.received_at)) {
+      jobMap.set(run.job_name, run);
+    }
+  }
+
+  const lines: string[] = [];
+
+  lines.push('# HELP backup_last_run_timestamp_seconds Unix timestamp when the latest backup run ended');
+  lines.push('# TYPE backup_last_run_timestamp_seconds gauge');
+  for (const run of jobMap.values()) {
+    const ts = Math.floor(new Date(run.end_time).getTime() / 1000);
+    lines.push(`backup_last_run_timestamp_seconds{job_name="${promLabel(run.job_name)}",agent_id="${promLabel(run.agent_id)}"} ${ts}`);
+  }
+
+  lines.push('# HELP backup_last_run_success Whether the latest backup run succeeded (1=success, 0=failure, 0.5=partial)');
+  lines.push('# TYPE backup_last_run_success gauge');
+  for (const run of jobMap.values()) {
+    const v = run.status === 'success' ? 1 : run.status === 'partial' ? 0.5 : 0;
+    lines.push(`backup_last_run_success{job_name="${promLabel(run.job_name)}",agent_id="${promLabel(run.agent_id)}"} ${v}`);
+  }
+
+  lines.push('# HELP backup_last_run_duration_seconds Duration of the latest backup run in seconds');
+  lines.push('# TYPE backup_last_run_duration_seconds gauge');
+  for (const run of jobMap.values()) {
+    const ms = new Date(run.end_time).getTime() - new Date(run.start_time).getTime();
+    if (!isNaN(ms) && ms >= 0) {
+      lines.push(`backup_last_run_duration_seconds{job_name="${promLabel(run.job_name)}",agent_id="${promLabel(run.agent_id)}"} ${(ms / 1000).toFixed(3)}`);
+    }
+  }
+
+  lines.push('# HELP backup_last_run_bytes Bytes backed up in the latest run');
+  lines.push('# TYPE backup_last_run_bytes gauge');
+  for (const run of jobMap.values()) {
+    if (run.bytes_backed_up !== undefined) {
+      lines.push(`backup_last_run_bytes{job_name="${promLabel(run.job_name)}",agent_id="${promLabel(run.agent_id)}"} ${run.bytes_backed_up}`);
+    }
+  }
+
+  const rlRows = await getRateLimiter(env).fetch('http://rl/top')
+    .then(r => r.json<{ ip: string; endpoint: string; count: number }[]>());
+  lines.push('# HELP ratelimit_requests_current Request count per IP and endpoint over the current and previous minute');
+  lines.push('# TYPE ratelimit_requests_current gauge');
+  for (const row of rlRows) {
+    lines.push(`ratelimit_requests_current{ip="${promLabel(row.ip)}",endpoint="${promLabel(row.endpoint)}"} ${row.count}`);
+  }
+
+  lines.push('');
+  return new Response(lines.join('\n'), {
+    headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' },
+  });
 }
 
 async function handleHealth(request: Request, env: Env): Promise<Response> {
@@ -530,11 +871,21 @@ export default {
 
     try {
       if (path === '/health') return handleHealth(request, env);
+      if (path === '/favicon.ico') return handleFavicon();
 
       if (!(await authenticate(request, env))) return unauthorized(env);
 
-      if ((path === '/' || path === '') && method === 'GET') return handleUI(request, env);
+      const rl = await checkRateLimit(request, env, method === 'POST' ? 'write' : 'read');
+      if (rl) return rl;
+
+      if ((path === '/' || path === '') && method === 'GET') return handleUI(request, env, getSiteName(request, env), env.DOCS_URL || '');
       if (path === '/docs' && method === 'GET') return handleDocs();
+      if (path === '/metrics' && method === 'GET') return handleMetrics(env);
+
+      if (path.startsWith('/run/') && method === 'GET') {
+        const runId = decodeURIComponent(path.slice('/run/'.length));
+        if (runId) return handleRunDetail(runId, env);
+      }
 
       if (path === '/v1/backup-runs') {
         if (method === 'POST') return handleSubmit(request, env);

@@ -2,12 +2,15 @@ import { DurableObject } from 'cloudflare:workers';
 
 export interface Env {
   BACKUP_STORE: DurableObjectNamespace<BackupRegistry>;
+  RATE_LIMITER: DurableObjectNamespace<RateLimiter>;
   AUTH_USER?: string;
   AUTH_PASS?: string;
   JWT_ISSUER?: string;
   JWT_AUDIENCE?: string;
   JWKS_URI?: string;
   API_TOKENS?: string;
+  SITE_NAME?: string;
+  DOCS_URL?: string;
 }
 
 export type BackupStatus = 'success' | 'failure' | 'partial';
@@ -24,8 +27,72 @@ export interface BackupRun {
   encrypted?: boolean;
   encryption_status?: EncryptionStatus;
   error?: string | null;
+  backup_url?: string;
   metadata?: Record<string, unknown>;
   received_at: string;
+}
+
+export class RateLimiter extends DurableObject {
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS rl (
+        ip      TEXT    NOT NULL,
+        endpoint TEXT   NOT NULL,
+        window  INTEGER NOT NULL,
+        count   INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (ip, endpoint, window)
+      )
+    `);
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
+
+    if (request.method === 'POST' && path === '/check') {
+      const { ip, endpoint, limit } = await request.json<{ ip: string; endpoint: string; limit: number }>();
+      const window = Math.floor(Date.now() / 60000);
+
+      this.ctx.storage.sql.exec(
+        `INSERT INTO rl (ip, endpoint, window, count) VALUES (?, ?, ?, 1)
+         ON CONFLICT (ip, endpoint, window) DO UPDATE SET count = count + 1`,
+        ip, endpoint, window
+      );
+      const row = this.ctx.storage.sql.exec(
+        `SELECT count FROM rl WHERE ip = ? AND endpoint = ? AND window = ?`,
+        ip, endpoint, window
+      ).one();
+      const count = (row?.count as number) ?? 1;
+
+      if (Math.random() < 0.01) {
+        this.ctx.storage.sql.exec(`DELETE FROM rl WHERE window < ?`, window - 2);
+      }
+
+      const remaining = Math.max(0, limit - count);
+      const allowed = count <= limit;
+      return Response.json({ allowed, count, remaining, limit }, {
+        status: allowed ? 200 : 429,
+        headers: {
+          'X-RateLimit-Limit': String(limit),
+          'X-RateLimit-Remaining': String(remaining),
+          'X-RateLimit-Reset': String((window + 1) * 60),
+        },
+      });
+    }
+
+    if (request.method === 'GET' && path === '/top') {
+      const window = Math.floor(Date.now() / 60000);
+      const rows = this.ctx.storage.sql.exec(
+        `SELECT ip, endpoint, SUM(count) as count
+         FROM rl WHERE window >= ? GROUP BY ip, endpoint ORDER BY count DESC LIMIT 100`,
+        window - 1
+      ).toArray();
+      return Response.json(rows);
+    }
+
+    return new Response('Not Found', { status: 404 });
+  }
 }
 
 export const MAX_BODY_SIZE = 1 * 1024 * 1024;
