@@ -11,6 +11,14 @@ class_name = "BackupRegistry"
 tag = "v1"
 new_sqlite_classes = ["BackupRegistry"]
 
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RateLimiter"]
+
+[[migrations]]
+tag = "v3"
+deleted_classes = ["RateLimiter"]
+
 # Basic auth for the UI and API:
 # [vars]
 # AUTH_USER = "admin"
