@@ -3,7 +3,7 @@ import { authenticate, unauthorized, getAuthConfig, createSessionCookie, clearSe
 
 export { BackupRegistry };
 
-const VERSION = '0.5.1';
+const VERSION = '0.5.2';
 
 const FAVICON_B64 = 'AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 const VALID_STATUSES: BackupStatus[] = ['success', 'failure', 'partial'];
@@ -875,11 +875,11 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
       return new Response(`Token exchange failed: ${err}`, { status: 400 });
     }
 
-    const tokens = await tokenResp.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+    const tokens = await tokenResp.json() as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
     const redirectPath = state ? atob(decodeURIComponent(state)) : '/';
 
     const sessionTokens = {
-      accessToken: tokens.access_token,
+      accessToken: tokens.id_token || tokens.access_token,
       refreshToken: tokens.refresh_token,
       expiresAt: Date.now() + ((tokens.expires_in || 300) * 1000) - 300000,
     };

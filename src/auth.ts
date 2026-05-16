@@ -60,6 +60,31 @@ function isConfigured(config: AuthConfig): boolean {
 
 let cachedJWKS: ReturnType<typeof createRemoteJWKSet> | null = null;
 let cachedJWKSUri: string | null = null;
+let cachedDiscoveryIssuer: string | null = null;
+let cachedDiscoveredJwksUri: string | null = null;
+
+async function resolveJwksUri(config: AuthConfig): Promise<string | null> {
+  if (config.jwksUri) return config.jwksUri;
+  if (!config.jwtIssuer) return null;
+
+  if (cachedDiscoveryIssuer === config.jwtIssuer && cachedDiscoveredJwksUri) {
+    return cachedDiscoveredJwksUri;
+  }
+
+  try {
+    const discoveryUrl = `${config.jwtIssuer}/.well-known/openid-configuration`;
+    const resp = await fetch(discoveryUrl);
+    if (!resp.ok) throw new Error(`Discovery fetch failed: ${resp.status}`);
+    const doc = await resp.json() as { jwks_uri?: string };
+    if (!doc.jwks_uri) throw new Error('No jwks_uri in discovery document');
+    cachedDiscoveryIssuer = config.jwtIssuer;
+    cachedDiscoveredJwksUri = doc.jwks_uri;
+    return doc.jwks_uri;
+  } catch (e) {
+    console.error('OIDC discovery failed:', e);
+    return null;
+  }
+}
 
 function getJWKS(uri: string): ReturnType<typeof createRemoteJWKSet> {
   if (!cachedJWKS || cachedJWKSUri !== uri) {
@@ -82,21 +107,19 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 async function validateJWT(token: string, config: AuthConfig): Promise<boolean> {
-  if (!config.jwtIssuer) {
-    console.error('JWT issuer not configured');
+  if (!config.jwtIssuer) return false;
+
+  const jwksUri = await resolveJwksUri(config);
+  if (!jwksUri) {
+    console.error('Could not resolve JWKS URI for issuer:', config.jwtIssuer);
     return false;
   }
 
-  const jwksUri = config.jwksUri || `${config.jwtIssuer}/.well-known/jwks.json`;
-  console.log('Validating JWT with issuer:', config.jwtIssuer, 'audience:', config.jwtAudience, 'jwks:', jwksUri);
-  const JWKS = getJWKS(jwksUri);
-
   try {
-    const result = await jwtVerify(token, JWKS, {
+    await jwtVerify(token, getJWKS(jwksUri), {
       issuer: config.jwtIssuer,
       audience: config.jwtAudience || undefined,
     });
-    console.log('JWT validation successful:', result);
     return true;
   } catch (e) {
     console.error('JWT validation error:', e);
@@ -141,11 +164,11 @@ async function refreshToken(refreshToken: string, config: AuthConfig): Promise<S
 
     if (!tokenResp.ok) return null;
 
-    const tokens = await tokenResp.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+    const tokens = await tokenResp.json() as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
     if (!tokens.access_token) return null;
 
     return {
-      accessToken: tokens.access_token,
+      accessToken: tokens.id_token || tokens.access_token,
       refreshToken: tokens.refresh_token || refreshToken,
       expiresAt: Date.now() + ((tokens.expires_in || 300) * 1000) - 300000,
     };
