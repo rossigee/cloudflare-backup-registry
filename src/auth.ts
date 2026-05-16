@@ -61,6 +61,15 @@ function validateApiToken(token: string, config: AuthConfig): boolean {
   return config.apiTokens.has(token);
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  const maxLen = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < maxLen; i++) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
 function validateBasicAuth(headerValue: string, config: AuthConfig): boolean {
   if (!config.basic) return false;
   const [scheme, encoded] = headerValue.split(' ');
@@ -68,8 +77,8 @@ function validateBasicAuth(headerValue: string, config: AuthConfig): boolean {
   const decoded = atob(encoded);
   const colonIdx = decoded.indexOf(':');
   if (colonIdx === -1) return false;
-  return decoded.substring(0, colonIdx) === config.basic.username &&
-    decoded.substring(colonIdx + 1) === config.basic.password;
+  return timingSafeEqual(decoded.substring(0, colonIdx), config.basic.username) &&
+    timingSafeEqual(decoded.substring(colonIdx + 1), config.basic.password);
 }
 
 export async function authenticate(request: Request, env: Env): Promise<boolean> {

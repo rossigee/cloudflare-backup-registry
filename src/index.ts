@@ -11,6 +11,19 @@ const VALID_ENC_STATUSES: EncryptionStatus[] = ['encrypted', 'unencrypted', 'par
 
 const RATE_LIMITS = { write: 30, read: 120 } as const;
 
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'",
+};
+
+function htmlResponse(html: string): Response {
+  return new Response(html, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8', ...SECURITY_HEADERS },
+  });
+}
+
 function getRateLimiter(env: Env): DurableObjectStub<RateLimiter> {
   return env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName('global'));
 }
@@ -65,7 +78,7 @@ function formatBytes(bytes?: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
@@ -128,7 +141,11 @@ function validatePayload(data: unknown): ValidationResult {
   }
   if (d.backup_url !== undefined && d.backup_url !== null) {
     if (typeof d.backup_url !== 'string') return { ok: false, error: 'backup_url must be a string' };
-    try { new URL(d.backup_url); } catch { return { ok: false, error: 'backup_url must be a valid URL' }; }
+    let parsedUrl: URL;
+    try { parsedUrl = new URL(d.backup_url); } catch { return { ok: false, error: 'backup_url must be a valid URL' }; }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return { ok: false, error: 'backup_url must use http or https' };
+    }
   }
   if (d.metadata !== undefined && (typeof d.metadata !== 'object' || d.metadata === null || Array.isArray(d.metadata))) {
     return { ok: false, error: 'metadata must be a plain object' };
@@ -154,14 +171,19 @@ function validatePayload(data: unknown): ValidationResult {
 }
 
 async function handleSubmit(request: Request, env: Env): Promise<Response> {
-  const contentLength = request.headers.get('Content-Length');
-  if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {
+  let rawBody: ArrayBuffer;
+  try {
+    rawBody = await request.arrayBuffer();
+  } catch {
+    return Response.json({ error: 'Failed to read request body' }, { status: 400 });
+  }
+  if (rawBody.byteLength > MAX_BODY_SIZE) {
     return Response.json({ error: 'Request body too large' }, { status: 413 });
   }
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = JSON.parse(new TextDecoder().decode(rawBody));
   } catch {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
@@ -183,8 +205,9 @@ async function handleSubmit(request: Request, env: Env): Promise<Response> {
 async function handleList(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const params = new URLSearchParams();
-  for (const [key, val] of url.searchParams) {
-    params.set(key, val);
+  for (const key of ['agent_id', 'job_name', 'status', 'since', 'limit']) {
+    const val = url.searchParams.get(key);
+    if (val !== null) params.set(key, val);
   }
   const store = getStore(env);
   return store.fetch(`http://do/list?${params}`);
@@ -236,6 +259,7 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
   const allRuns: BackupRun[] = await resp.json();
 
   // Build latest-per-job map — used for stat cards and the default (unfiltered) table view.
+  // "Latest" is the run with the most recent end_time (when the backup actually completed).
   const jobMap = new Map<string, { latest: BackupRun; count: number }>();
   for (const run of allRuns) {
     const existing = jobMap.get(run.job_name);
@@ -243,7 +267,7 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
       jobMap.set(run.job_name, { latest: run, count: 1 });
     } else {
       existing.count++;
-      if (new Date(run.received_at) > new Date(existing.latest.received_at)) {
+      if (new Date(run.end_time) > new Date(existing.latest.end_time)) {
         existing.latest = run;
       }
     }
@@ -275,7 +299,7 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
   } else {
     // Default view: latest per job. Status filter applied after grouping.
     let jobRows = Array.from(jobMap.values())
-      .sort((a, b) => new Date(b.latest.received_at).getTime() - new Date(a.latest.received_at).getTime());
+      .sort((a, b) => new Date(b.latest.end_time).getTime() - new Date(a.latest.end_time).getTime());
     if (filterStatus) {
       jobRows = jobRows.filter(({ latest }) => latest.status === filterStatus);
     }
@@ -326,11 +350,10 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
     ? `<p class="table-caption">${displayRows.length} run${displayRows.length !== 1 ? 's' : ''} matching filter &mdash; <a href="/">Back to overview</a></p>`
     : `<p class="table-caption">Latest backup per job &mdash; click job name or run count to see full history</p>`;
 
-  const statLabel = isFiltered ? 'Runs' : 'Jobs';
   const noStatusParams = new URLSearchParams();
   if (filterAgent) noStatusParams.set('agent_id', filterAgent);
   if (filterJob) noStatusParams.set('job_name', filterJob);
-  const noStatusHref = '/?' + noStatusParams.toString() || '/';
+  const noStatusHref = noStatusParams.toString() ? '/?' + noStatusParams.toString() : '/';
   const statusHref = (s: string) => {
     const p = new URLSearchParams(noStatusParams);
     p.set('status', s);
@@ -513,7 +536,7 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
 </body>
 </html>`;
 
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return htmlResponse(html);
 }
 
 async function handleDocs(): Promise<Response> {
@@ -692,7 +715,7 @@ npx wrangler secret put AUTH_PASS</pre>
 </body>
 </html>`;
 
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return htmlResponse(html);
 }
 
 function handleFavicon(): Response {
@@ -705,7 +728,8 @@ function handleFavicon(): Response {
 async function handleRunDetail(runId: string, env: Env): Promise<Response> {
   const store = getStore(env);
   const resp = await store.fetch(`http://do/get/${encodeURIComponent(runId)}`);
-  if (!resp.ok) return new Response('Run not found', { status: 404 });
+  if (resp.status === 404) return new Response('Run not found', { status: 404 });
+  if (!resp.ok) return new Response('Internal server error', { status: 500 });
   const run: BackupRun = await resp.json();
 
   const field = (label: string, value: string) =>
@@ -790,7 +814,7 @@ async function handleRunDetail(runId: string, env: Env): Promise<Response> {
 </body>
 </html>`;
 
-  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return htmlResponse(html);
 }
 
 function promLabel(v: string): string {
@@ -802,11 +826,11 @@ async function handleMetrics(env: Env): Promise<Response> {
   const resp = await store.fetch(`http://do/list?limit=1000`);
   const allRuns: BackupRun[] = await resp.json();
 
-  // Group by job_name, keep latest per job
+  // Group by job_name, keep the run with the most recent end_time
   const jobMap = new Map<string, BackupRun>();
   for (const run of allRuns) {
     const existing = jobMap.get(run.job_name);
-    if (!existing || new Date(run.received_at) > new Date(existing.received_at)) {
+    if (!existing || new Date(run.end_time) > new Date(existing.end_time)) {
       jobMap.set(run.job_name, run);
     }
   }
@@ -907,8 +931,8 @@ export default {
 
       return new Response('Not Found', { status: 404 });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return new Response(`Internal Server Error: ${message}`, { status: 500 });
+      console.error('Unhandled error:', err instanceof Error ? err.stack : String(err));
+      return new Response('Internal server error', { status: 500 });
     }
   },
 };

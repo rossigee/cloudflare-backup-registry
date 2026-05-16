@@ -77,3 +77,7 @@ vars = { AUTH_USER = "testuser", AUTH_PASS = "testpass", API_TOKENS = "test-api-
 [[env.testing.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
+
+[[env.testing.durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
