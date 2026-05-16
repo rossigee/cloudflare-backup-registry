@@ -25,10 +25,17 @@ jobs:
     name: Deploy (${{ matrix.env }})
     needs: test
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.optional }}
     strategy:
       fail-fast: false
       matrix:
-        env: [golder, wardle, timewarp]
+        include:
+          - env: golder
+            optional: false
+          - env: wardle
+            optional: false
+          - env: timewarp
+            optional: true
     steps:
       - uses: actions/checkout@v4
 
