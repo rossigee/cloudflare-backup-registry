@@ -855,8 +855,7 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
     return new Response('OAuth2 not configured', { status: 500 });
   }
 
-  const redirectUri = config.oauth2.redirectUri || `${url.origin}/oauth/callback`;
-  console.log('Exchanging code for token, redirect_uri:', redirectUri);
+  const redirectUri = `${url.origin}/oauth/callback`;
 
   try {
     const tokenResp = await fetch(config.oauth2.tokenEndpoint, {
@@ -873,15 +872,18 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
 
     if (!tokenResp.ok) {
       const err = await tokenResp.text();
-      console.error('Token exchange failed:', err);
       return new Response(`Token exchange failed: ${err}`, { status: 400 });
     }
 
-    const tokens = await tokenResp.json() as { access_token: string; token_type?: string };
-    console.log('Token exchange successful, token type:', tokens.token_type);
-    
-    const redirectPath = state ? atob(state) : '/';
-    return createSessionCookie(tokens.access_token, redirectPath);
+    const tokens = await tokenResp.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+    const redirectPath = state ? atob(decodeURIComponent(state)) : '/';
+
+    const sessionTokens = {
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: Date.now() + ((tokens.expires_in || 300) * 1000) - 300000,
+    };
+    return createSessionCookie(sessionTokens, redirectPath);
   } catch (err) {
     console.error('OAuth2 token exchange error:', err);
     return new Response('Token exchange failed', { status: 500 });
