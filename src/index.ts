@@ -1,5 +1,5 @@
 import { BackupRegistry, Env, BackupRun, BackupStatus, EncryptionStatus, MAX_BODY_SIZE } from './durable-object';
-import { authenticate, unauthorized } from './auth';
+import { authenticate, unauthorized, getAuthConfig, createSessionCookie, clearSessionCookie } from './auth';
 
 export { BackupRegistry };
 
@@ -422,7 +422,10 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
       <h1>${escapeHtml(siteName)}</h1>
       <p>Backup run reports from registered agents</p>
     </div>
-    ${docsUrl ? `<div><a href="${escapeHtml(docsUrl)}" target="_blank" rel="noopener noreferrer" style="color:#4fc3f7;text-decoration:none;font-size:14px;">Docs</a></div>` : ''}
+    <div style="display:flex;align-items:center;gap:12px;">
+      ${docsUrl ? `<a href="${escapeHtml(docsUrl)}" target="_blank" rel="noopener noreferrer" style="color:#4fc3f7;text-decoration:none;font-size:14px;">Docs</a>` : ''}
+      <a href="/logout" style="color: #ff6b6b; text-decoration: none; font-size: 13px; padding: 4px 8px; border-radius: 4px;">Logout</a>
+    </div>
   </div>
 
   <div class="stats">
@@ -822,13 +825,71 @@ async function handleMetrics(env: Env): Promise<Response> {
   });
 }
 
-async function handleHealth(request: Request, env: Env): Promise<Response> {
-  if (!(await authenticate(request, env))) return unauthorized(env);
+async function handleHealth(env: Env): Promise<Response> {
   return Response.json({
     status: 'healthy',
     version: VERSION,
     timestamp: new Date().toISOString(),
   });
+}
+
+async function handleOAuthCallback(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const error = url.searchParams.get('error');
+
+  if (error) {
+    console.error('OAuth error:', error, url.searchParams.get('error_description'));
+    return new Response(`OAuth2 error: ${error}`, { status: 400 });
+  }
+
+  if (!code) {
+    console.error('Missing authorization code');
+    return new Response('Missing authorization code', { status: 400 });
+  }
+
+  const config = getAuthConfig(env);
+  if (!config.oauth2) {
+    console.error('OAuth2 not configured');
+    return new Response('OAuth2 not configured', { status: 500 });
+  }
+
+  const redirectUri = config.oauth2.redirectUri || `${url.origin}/oauth/callback`;
+  console.log('Exchanging code for token, redirect_uri:', redirectUri);
+
+  try {
+    const tokenResp = await fetch(config.oauth2.tokenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: config.oauth2.clientId,
+        client_secret: config.oauth2.clientSecret,
+      }),
+    });
+
+    if (!tokenResp.ok) {
+      const err = await tokenResp.text();
+      console.error('Token exchange failed:', err);
+      return new Response(`Token exchange failed: ${err}`, { status: 400 });
+    }
+
+    const tokens = await tokenResp.json() as { access_token: string; token_type?: string };
+    console.log('Token exchange successful, token type:', tokens.token_type);
+    
+    const redirectPath = state ? atob(state) : '/';
+    return createSessionCookie(tokens.access_token, redirectPath);
+  } catch (err) {
+    console.error('OAuth2 token exchange error:', err);
+    return new Response('Token exchange failed', { status: 500 });
+  }
+}
+
+async function handleLogout(): Promise<Response> {
+  return clearSessionCookie();
 }
 
 export default {
@@ -837,32 +898,46 @@ export default {
     const path = url.pathname;
     const method = request.method;
 
+    const withAuth = async (handler: () => Promise<Response>): Promise<Response> => {
+      const config = getAuthConfig(env);
+      const result = await authenticate(request, env, config);
+      if (!result.authenticated) {
+        if (result.redirect) return unauthorized(config, result.redirect);
+        return unauthorized(config);
+      }
+      return handler();
+    };
+
     try {
-      if (path === '/health') return handleHealth(request, env);
+      if (path === '/oauth/callback') {
+        return handleOAuthCallback(request, env);
+      } else if (path === '/logout') {
+        return withAuth(() => handleLogout());
+      }
+
+      if (path === '/health') return withAuth(() => handleHealth(env));
       if (path === '/favicon.ico') return handleFavicon();
 
-      if (!(await authenticate(request, env))) return unauthorized(env);
-
-      if ((path === '/' || path === '') && method === 'GET') return handleUI(request, env, getSiteName(request, env), env.DOCS_URL || '');
-      if (path === '/docs' && method === 'GET') return handleDocs();
-      if (path === '/metrics' && method === 'GET') return handleMetrics(env);
+      if ((path === '/' || path === '') && method === 'GET') return withAuth(() => handleUI(request, env, getSiteName(request, env), env.DOCS_URL || ''));
+      if (path === '/docs' && method === 'GET') return withAuth(() => handleDocs());
+      if (path === '/metrics' && method === 'GET') return withAuth(() => handleMetrics(env));
 
       if (path.startsWith('/run/') && method === 'GET') {
         const runId = decodeURIComponent(path.slice('/run/'.length));
-        if (runId) return handleRunDetail(runId, env);
+        if (runId) return withAuth(() => handleRunDetail(runId, env));
       }
 
       if (path === '/v1/backup-runs') {
-        if (method === 'POST') return handleSubmit(request, env);
-        if (method === 'GET') return handleList(request, env);
+        if (method === 'POST') return withAuth(() => handleSubmit(request, env));
+        if (method === 'GET') return withAuth(() => handleList(request, env));
         return new Response('Method Not Allowed', { status: 405 });
       }
 
       if (path.startsWith('/v1/backup-runs/')) {
         const runId = decodeURIComponent(path.slice('/v1/backup-runs/'.length));
         if (!runId) return new Response('Missing run_id', { status: 400 });
-        if (method === 'GET') return handleGetRun(runId, env);
-        if (method === 'DELETE') return handleDeleteRun(runId, env);
+        if (method === 'GET') return withAuth(() => handleGetRun(runId, env));
+        if (method === 'DELETE') return withAuth(() => handleDeleteRun(runId, env));
         return new Response('Method Not Allowed', { status: 405 });
       }
 
