@@ -1,15 +1,13 @@
-import { BackupRegistry, RateLimiter, Env, BackupRun, BackupStatus, EncryptionStatus, MAX_BODY_SIZE } from './durable-object';
+import { BackupRegistry, Env, BackupRun, BackupStatus, EncryptionStatus, MAX_BODY_SIZE } from './durable-object';
 import { authenticate, unauthorized } from './auth';
 
-export { BackupRegistry, RateLimiter };
+export { BackupRegistry };
 
 const VERSION = '0.2.0';
 
 const FAVICON_B64 = 'AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 const VALID_STATUSES: BackupStatus[] = ['success', 'failure', 'partial'];
 const VALID_ENC_STATUSES: EncryptionStatus[] = ['encrypted', 'unencrypted', 'partial', 'failed'];
-
-const RATE_LIMITS = { write: 30, read: 120 } as const;
 
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
@@ -21,33 +19,6 @@ const SECURITY_HEADERS: Record<string, string> = {
 function htmlResponse(html: string): Response {
   return new Response(html, {
     headers: { 'Content-Type': 'text/html; charset=utf-8', ...SECURITY_HEADERS },
-  });
-}
-
-function getRateLimiter(env: Env): DurableObjectStub<RateLimiter> {
-  return env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName('global'));
-}
-
-async function checkRateLimit(request: Request, env: Env, endpoint: 'read' | 'write'): Promise<Response | null> {
-  const ip = request.headers.get('CF-Connecting-IP');
-  if (!ip) return null; // no CF header = local dev, skip
-  const limit = RATE_LIMITS[endpoint];
-  const resp = await getRateLimiter(env).fetch('http://rl/check', {
-    method: 'POST',
-    body: JSON.stringify({ ip, endpoint, limit }),
-    headers: { 'Content-Type': 'application/json' },
-  });
-  if (resp.status !== 429) return null;
-  const reset = resp.headers.get('X-RateLimit-Reset') || '';
-  return new Response('Too Many Requests', {
-    status: 429,
-    headers: {
-      'Content-Type': 'text/plain',
-      'Retry-After': '60',
-      'X-RateLimit-Limit': String(limit),
-      'X-RateLimit-Remaining': '0',
-      ...(reset ? { 'X-RateLimit-Reset': reset } : {}),
-    },
   });
 }
 
@@ -674,31 +645,8 @@ npx wrangler secret put AUTH_PASS</pre>
         <li><code>backup_last_run_duration_seconds</code>{job_name, agent_id} — duration of the latest run</li>
         <li><code>backup_last_run_bytes</code>{job_name, agent_id} — bytes backed up (omitted if not reported)</li>
       </ul>
-      <h3>Rate limit metrics — abuse monitoring</h3>
-      <ul>
-        <li><code>ratelimit_requests_current</code>{ip, endpoint} — request count per IP over the current and previous minute (top 100)</li>
-      </ul>
       <pre>curl -s "https://backup-registry.golder.tech/metrics" \\
   -H "Authorization: Bearer &lt;token&gt;"</pre>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-header"><h2>Rate Limiting</h2></div>
-    <div class="section-content">
-      <p>All authenticated endpoints are rate-limited per client IP:</p>
-      <ul>
-        <li><strong>Write</strong> (<code>POST /v1/backup-runs</code>) — <strong>30 requests/minute</strong></li>
-        <li><strong>Read</strong> (all other endpoints) — <strong>120 requests/minute</strong></li>
-      </ul>
-      <p>Exceeded limits return <code>429 Too Many Requests</code> with the following headers:</p>
-      <ul>
-        <li><code>Retry-After: 60</code></li>
-        <li><code>X-RateLimit-Limit</code> — the applicable limit</li>
-        <li><code>X-RateLimit-Remaining: 0</code></li>
-        <li><code>X-RateLimit-Reset</code> — Unix timestamp of the next window</li>
-      </ul>
-      <p>Rate limiting is bypassed for localhost requests (development/testing).</p>
     </div>
   </div>
 
@@ -868,14 +816,6 @@ async function handleMetrics(env: Env): Promise<Response> {
     }
   }
 
-  const rlRows = await getRateLimiter(env).fetch('http://rl/top')
-    .then(r => r.json<{ ip: string; endpoint: string; count: number }[]>());
-  lines.push('# HELP ratelimit_requests_current Request count per IP and endpoint over the current and previous minute');
-  lines.push('# TYPE ratelimit_requests_current gauge');
-  for (const row of rlRows) {
-    lines.push(`ratelimit_requests_current{ip="${promLabel(row.ip)}",endpoint="${promLabel(row.endpoint)}"} ${row.count}`);
-  }
-
   lines.push('');
   return new Response(lines.join('\n'), {
     headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' },
@@ -902,9 +842,6 @@ export default {
       if (path === '/favicon.ico') return handleFavicon();
 
       if (!(await authenticate(request, env))) return unauthorized(env);
-
-      const rl = await checkRateLimit(request, env, method === 'POST' ? 'write' : 'read');
-      if (rl) return rl;
 
       if ((path === '/' || path === '') && method === 'GET') return handleUI(request, env, getSiteName(request, env), env.DOCS_URL || '');
       if (path === '/docs' && method === 'GET') return handleDocs();
