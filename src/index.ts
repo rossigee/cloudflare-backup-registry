@@ -226,57 +226,61 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
   const filterJob = url.searchParams.get('job_name') || '';
   const filterStatus = url.searchParams.get('status') || '';
   const limit = url.searchParams.get('limit') || '100';
-  const isFiltered = !!(filterAgent || filterJob || filterStatus);
+  // Text filters (agent/job) switch to "all runs" mode. Status alone stays in "latest per job" mode.
+  const isFiltered = !!(filterAgent || filterJob);
 
   const store = getStore(env);
+
+  // Always fetch all runs to compute stat card totals from the global view.
+  const resp = await store.fetch('http://do/list?limit=1000');
+  const allRuns: BackupRun[] = await resp.json();
+
+  // Build latest-per-job map — used for stat cards and the default (unfiltered) table view.
+  const jobMap = new Map<string, { latest: BackupRun; count: number }>();
+  for (const run of allRuns) {
+    const existing = jobMap.get(run.job_name);
+    if (!existing) {
+      jobMap.set(run.job_name, { latest: run, count: 1 });
+    } else {
+      existing.count++;
+      if (new Date(run.received_at) > new Date(existing.latest.received_at)) {
+        existing.latest = run;
+      }
+    }
+  }
+
+  // Stat card totals always reflect the global latest-per-job picture, ignoring active filters.
+  const totalSuccess = Array.from(jobMap.values()).filter(({ latest }) => latest.status === 'success').length;
+  const totalFailure = Array.from(jobMap.values()).filter(({ latest }) => latest.status === 'failure').length;
+  const totalPartial = Array.from(jobMap.values()).filter(({ latest }) => latest.status === 'partial').length;
 
   interface DisplayRow { run: BackupRun; historyCount?: number }
   let displayRows: DisplayRow[];
 
   if (isFiltered) {
-    // Fetch all runs (only push status filter to DO; do string matching here for partial/case-insensitive support)
-    const params = new URLSearchParams();
-    if (filterStatus) params.set('status', filterStatus);
-    params.set('limit', '1000');
-    const resp = await store.fetch(`http://do/list?${params}`);
-    let allRuns: BackupRun[] = await resp.json();
-
+    // Text-filtered view: show all matching runs (case-insensitive partial match).
+    let filtered = allRuns;
     if (filterAgent) {
       const agentLower = filterAgent.toLowerCase();
-      allRuns = allRuns.filter(r => r.agent_id.toLowerCase().includes(agentLower));
+      filtered = filtered.filter(r => r.agent_id.toLowerCase().includes(agentLower));
     }
     if (filterJob) {
       const jobLower = filterJob.toLowerCase();
-      allRuns = allRuns.filter(r => r.job_name.toLowerCase().includes(jobLower));
+      filtered = filtered.filter(r => r.job_name.toLowerCase().includes(jobLower));
     }
-
-    displayRows = allRuns.slice(0, parseInt(limit, 10)).map(run => ({ run }));
+    if (filterStatus) {
+      filtered = filtered.filter(r => r.status === filterStatus);
+    }
+    displayRows = filtered.slice(0, parseInt(limit, 10)).map(run => ({ run }));
   } else {
-    // Default view: fetch all runs, group by job_name, show latest per job + history count
-    const resp = await store.fetch(`http://do/list?limit=1000`);
-    const allRuns: BackupRun[] = await resp.json();
-
-    const jobMap = new Map<string, { latest: BackupRun; count: number }>();
-    for (const run of allRuns) {
-      const existing = jobMap.get(run.job_name);
-      if (!existing) {
-        jobMap.set(run.job_name, { latest: run, count: 1 });
-      } else {
-        existing.count++;
-        if (new Date(run.received_at) > new Date(existing.latest.received_at)) {
-          existing.latest = run;
-        }
-      }
+    // Default view: latest per job. Status filter applied after grouping.
+    let jobRows = Array.from(jobMap.values())
+      .sort((a, b) => new Date(b.latest.received_at).getTime() - new Date(a.latest.received_at).getTime());
+    if (filterStatus) {
+      jobRows = jobRows.filter(({ latest }) => latest.status === filterStatus);
     }
-
-    displayRows = Array.from(jobMap.values())
-      .sort((a, b) => new Date(b.latest.received_at).getTime() - new Date(a.latest.received_at).getTime())
-      .map(({ latest, count }) => ({ run: latest, historyCount: count }));
+    displayRows = jobRows.map(({ latest, count }) => ({ run: latest, historyCount: count }));
   }
-
-  const totalSuccess = displayRows.filter(r => r.run.status === 'success').length;
-  const totalFailure = displayRows.filter(r => r.run.status === 'failure').length;
-  const totalPartial = displayRows.filter(r => r.run.status === 'partial').length;
 
   const statusOptions = ['', 'success', 'failure', 'partial']
     .map(s => `<option value="${s}"${filterStatus === s ? ' selected' : ''}>${s || 'All statuses'}</option>`)
@@ -312,7 +316,7 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
         <td class="actions">
           <a class="btn-view" href="/run/${encodeURIComponent(run.run_id)}">View</a>
           ${run.backup_url ? `<a class="btn-download" href="${escapeHtml(run.backup_url)}" target="_blank" rel="noopener noreferrer">Download</a>` : ''}
-          <button class="btn-del" onclick="delRun(${JSON.stringify(run.run_id)})">Delete</button>
+          <button class="btn-del" onclick="delRun(${escapeHtml(JSON.stringify(run.run_id))})">Delete</button>
         </td>
       </tr>`;
     }
@@ -428,7 +432,7 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
   </div>
 
   <div class="stats">
-    <a class="stat-card stat-link" href="${noStatusHref}"><div class="count count-total">${displayRows.length}</div><div class="label">${statLabel}</div></a>
+    <a class="stat-card stat-link" href="${noStatusHref}"><div class="count count-total">${jobMap.size}</div><div class="label">Jobs</div></a>
     <a class="stat-card stat-link" href="${statusHref('success')}"><div class="count count-success">${totalSuccess}</div><div class="label">Success</div></a>
     <a class="stat-card stat-link" href="${statusHref('failure')}"><div class="count count-failure">${totalFailure}</div><div class="label">Failure</div></a>
     <a class="stat-card stat-link" href="${statusHref('partial')}"><div class="count count-partial">${totalPartial}</div><div class="label">Partial</div></a>
@@ -770,7 +774,7 @@ async function handleRunDetail(runId: string, env: Env): Promise<Response> {
 
   <div class="actions">
     ${run.backup_url ? `<a class="btn btn-download-lg" href="${escapeHtml(run.backup_url)}" target="_blank" rel="noopener noreferrer">Download backup</a>` : ''}
-    <button class="btn btn-del" onclick="delRun(${JSON.stringify(run.run_id)})">Delete this run</button>
+    <button class="btn btn-del" onclick="delRun(${escapeHtml(JSON.stringify(run.run_id))})">Delete this run</button>
   </div>
 
   <script>
