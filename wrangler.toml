@@ -29,13 +29,18 @@ deleted_classes = ["RateLimiter"]
 # JWT_AUDIENCE = "your-client-id.apps.googleusercontent.com"
 # JWKS_URI = ""  # defaults to {issuer}/.well-known/jwks.json
 
+# OAuth2/OIDC for UI login flow (requires JWT_ISSUER and JWT_AUDIENCE):
+# KEYCLOAK_CLIENT_SECRET = "your-client-secret"
+# BASE_URL = "https://your-domain.com"  # for OAuth2 redirect URI
+
 # API tokens for backup agents (comma-separated):
 # API_TOKENS = "tok1,tok2,tok3"
 
 [env.golder]
 account_id = "c1b74f148aee28025816e104a92622c5"
 routes = [{ pattern = "backups.golder.tech", custom_domain = true }]
-vars = { SITE_NAME = "Golder Backups" }
+vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.golder.tech" }
+# Secret (set via: wrangler secret put KEYCLOAK_CLIENT_SECRET --env golder)
 
 [[env.golder.durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -44,7 +49,8 @@ class_name = "BackupRegistry"
 [env.wardle]
 account_id = "c319c02aa39a98bfaaad068b83c0b179"
 routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
-vars = { SITE_NAME = "Wardle Backups" }
+vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.wardle.online" }
+# Secret (set via: wrangler secret put KEYCLOAK_CLIENT_SECRET --env wardle)
 
 [[env.wardle.durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -53,7 +59,8 @@ class_name = "BackupRegistry"
 [env.timewarp]
 account_id = "bd32abceb7ddba1b066a11732ae38c2f"
 routes = [{ pattern = "backups.timewarp.ws", custom_domain = true }]
-vars = { SITE_NAME = "Timewarp Backups" }
+vars = { SITE_NAME = "Timewarp Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.timewarp.ws" }
+# Secret (set via: wrangler secret put KEYCLOAK_CLIENT_SECRET --env timewarp)
 
 [[env.timewarp.durable_objects.bindings]]
 name = "BACKUP_STORE"

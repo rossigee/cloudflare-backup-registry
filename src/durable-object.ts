@@ -10,6 +10,8 @@ export interface Env {
   API_TOKENS?: string;
   SITE_NAME?: string;
   DOCS_URL?: string;
+  KEYCLOAK_CLIENT_SECRET?: string;
+  BASE_URL?: string;
 }
 
 export type BackupStatus = 'success' | 'failure' | 'partial';

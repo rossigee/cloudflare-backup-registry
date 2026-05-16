@@ -40,6 +40,12 @@ jobs:
       - run: npm ci
 
       - name: Deploy to ${{ matrix.env }}
-        run: npx wrangler deploy --env ${{ matrix.env }}
+        run: |
+          ENV_UPPER=$(echo "${{ matrix.env }}" | tr '[:lower:]' '[:upper:]')
+          TOKEN_VAR="CF_API_TOKEN_${ENV_UPPER}"
+          CLOUDFLARE_API_TOKEN="${!TOKEN_VAR:-$CF_API_TOKEN_DEFAULT}" npx wrangler deploy --env ${{ matrix.env }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_API_TOKEN_DEFAULT: ${{ secrets.CF_API_TOKEN }}
+          CF_API_TOKEN_GOLDER: ${{ secrets.CF_API_TOKEN_GOLDER }}
+          CF_API_TOKEN_WARDLE: ${{ secrets.CF_API_TOKEN_WARDLE }}
+          CF_API_TOKEN_TIMEWARP: ${{ secrets.CF_API_TOKEN_TIMEWARP }}
