@@ -49,7 +49,7 @@ class_name = "BackupRegistry"
 [env.wardle]
 account_id = "c319c02aa39a98bfaaad068b83c0b179"
 routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
-vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.wardle.online" }
+vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.wardle.online/auth/realms/Wardle", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.wardle.online" }
 # Secret (set via: wrangler secret put KEYCLOAK_CLIENT_SECRET --env wardle)
 
 [[env.wardle.durable_objects.bindings]]
@@ -59,7 +59,7 @@ class_name = "BackupRegistry"
 [env.timewarp]
 account_id = "bd32abceb7ddba1b066a11732ae38c2f"
 routes = [{ pattern = "backups.timewarp.ws", custom_domain = true }]
-vars = { SITE_NAME = "Timewarp Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.timewarp.ws" }
+vars = { SITE_NAME = "Timewarp Backups", JWT_ISSUER = "https://sso.timewarp.ws/auth/realms/Timewarp", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.timewarp.ws" }
 # Secret (set via: wrangler secret put KEYCLOAK_CLIENT_SECRET --env timewarp)
 
 [[env.timewarp.durable_objects.bindings]]
