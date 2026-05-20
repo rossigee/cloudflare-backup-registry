@@ -89,20 +89,48 @@ Three methods are supported, checked in order. If none are configured, all reque
 
 | Method | How to use |
 |---|---|
-| API token (Bearer) | `Authorization: Bearer <token>` |
-| API token (header) | `X-API-Key: <token>` |
+| **API token** (recommended for agents) | `Authorization: Bearer <token>` or `X-API-Key: <token>` |
 | Basic auth | `Authorization: Basic <base64(user:pass)>` |
 | JWT/OIDC | `Authorization: Bearer <jwt>` |
 
-Configure via [Cloudflare Secrets](https://developers.cloudflare.com/workers/configuration/secrets/):
+### Setting up API tokens for backup agents
+
+Define `API_TOKENS` as a **Cloudflare Secret** (it is a credential and must never be stored in plain text or committed to source control):
 
 ```bash
-npx wrangler secret put API_TOKENS   # comma-separated list of tokens for agents
-npx wrangler secret put AUTH_USER    # username for Basic auth (UI access)
-npx wrangler secret put AUTH_PASS    # password for Basic auth
+npx wrangler secret put API_TOKENS
+# Enter a comma-separated list of tokens, e.g.:
+# agent-token-abc123,agent-token-def456
 ```
 
-For JWT/OIDC, set `JWT_ISSUER`, `JWT_AUDIENCE`, and optionally `JWKS_URI` as secrets.
+Agents then send one of those tokens in each request:
+
+```bash
+curl -X POST https://backups.example.com/v1/backup-runs \
+  -H "Authorization: Bearer agent-token-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{ ... }'
+```
+
+### Basic auth for UI/admin access
+
+```bash
+npx wrangler secret put AUTH_USER
+# Enter: admin
+
+npx wrangler secret put AUTH_PASS
+# Enter: your-secure-password
+```
+
+### JWT/OIDC
+
+Set `JWT_ISSUER`, `JWT_AUDIENCE`, and optionally `JWKS_URI` as secrets:
+
+```bash
+npx wrangler secret put JWT_ISSUER
+npx wrangler secret put JWT_AUDIENCE
+npx wrangler secret put JWKS_URI
+```
 
 ## Deploy
 
