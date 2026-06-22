@@ -914,7 +914,7 @@ export default {
       if (path === '/oauth/callback') {
         return handleOAuthCallback(request, env);
       } else if (path === '/logout') {
-        return withAuth(() => handleLogout());
+        return handleLogout();
       }
 
       if (path === '/health') return withAuth(() => handleHealth(env));
