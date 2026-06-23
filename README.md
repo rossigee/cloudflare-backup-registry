@@ -132,13 +132,30 @@ npx wrangler secret put JWT_AUDIENCE
 npx wrangler secret put JWKS_URI
 ```
 
+## Setup
+
+### Local environment (.env)
+
+Create `.env` from Vault secrets (requires Vault access):
+
+```bash
+vault login -method=oidc
+./.env.sh > .env
+```
+
+This pulls live credentials from:
+- `infrastructure/cloudflare` → Cloudflare API token
+- `tenants/rossgolderltd/keycloak/clients/backups-registry` → OIDC client secret
+
+`.env` is gitignored — never commit it. Always regenerate from Vault for local development.
+
 ## Deploy
 
 ```bash
 npm run deploy
 ```
 
-Requires `CLOUDFLARE_API_TOKEN` in the environment, or run `npx wrangler login` first.
+Requires `CLOUDFLARE_API_TOKEN` in `.env` or set in environment, or run `npx wrangler login` first.
 
 ## Configuration
 
