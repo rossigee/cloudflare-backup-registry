@@ -140,14 +140,14 @@ Create `.env` from Vault secrets (requires Vault access):
 
 ```bash
 vault login -method=oidc
-./.env.sh > .env
+./.env.sh golder > .env      # or: wardle, timewarp
 ```
 
-This pulls live credentials from:
+This pulls live credentials from Vault for the specified tenant:
 - `infrastructure/cloudflare` → Cloudflare API token
-- `tenants/rossgolderltd/keycloak/clients/backups-registry` → OIDC client secret
+- `tenants/{golder,wardle,timewarp}/keycloak/clients/backups-registry` → OIDC client secret
 
-`.env` is gitignored — never commit it. Always regenerate from Vault for local development.
+Each tenant has separate OIDC credentials. `.env` is gitignored — never commit it. Always regenerate from Vault for local development.
 
 ## Deploy
 
