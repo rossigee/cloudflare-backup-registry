@@ -87,32 +87,70 @@ Returns `201 Created` with the stored object, or `400 Bad Request` with `{"error
 
 Three methods are supported, checked in order. If none are configured, all requests are accepted (suitable for development).
 
-| Method | How to use |
+| Method | Use case |
 |---|---|
-| **API token** (recommended for agents) | `Authorization: Bearer <token>` or `X-API-Key: <token>` |
-| Basic auth | `Authorization: Basic <base64(user:pass)>` |
-| JWT/OIDC | `Authorization: Bearer <jwt>` |
+| **API token** ⭐ | Backup agents (recommended) |
+| JWT/OIDC | Web UI login (requires Keycloak client setup) |
+| Basic auth | Admin UI/API access (development) |
 
-### Setting up API tokens for backup agents
+### API tokens for backup agents ⭐ (recommended)
 
-Define `API_TOKENS` as a **Cloudflare Secret** (it is a credential and must never be stored in plain text or committed to source control):
+API tokens are the simplest and most secure method for automated backup scripts.
+
+**Generate tokens** — already set up in Cloudflare Workers for each tenant:
+- golder: `tenants/rossgolderltd/backups-registry/api-key` in Vault
+- wardle: `tenants/wardle/backups-registry/api-key` in Vault
+- timewarp: `tenants/timewarp/backups-registry/api-key` in Vault
+
+**Use in backup scripts:**
 
 ```bash
-npx wrangler secret put API_TOKENS
-# Enter a comma-separated list of tokens, e.g.:
-# agent-token-abc123,agent-token-def456
+curl -X POST https://backups.golder.tech/v1/backup-runs \
+  -H "X-API-Key: <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "run_id": "550e8400-e29b-41d4-a716-446655440000",
+    "job_name": "postgres-daily",
+    "agent_id": "agent-db-01",
+    "start_time": "2026-05-12T02:00:00Z",
+    "end_time": "2026-05-12T02:04:33Z",
+    "status": "success"
+  }'
 ```
 
-Agents then send one of those tokens in each request:
+Or with Bearer token:
 
 ```bash
-curl -X POST https://backups.example.com/v1/backup-runs \
-  -H "Authorization: Bearer agent-token-abc123" \
+curl -X POST https://backups.golder.tech/v1/backup-runs \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{ ... }'
 ```
 
-### Basic auth for UI/admin access
+### JWT/OIDC (Web UI login)
+
+For the web UI, configure JWT/OIDC to enable single sign-on via Keycloak. This requires:
+
+1. **Create Keycloak OIDC client** in each realm:
+   - Client ID: `backups-registry`
+   - Access Type: `confidential`
+   - Valid Redirect URIs: `https://backups.<domain>/oauth/callback`
+   
+2. **Store credentials in Vault** (example for golder):
+   ```bash
+   vault kv put tenants/rossgolderltd/keycloak/clients/backups-registry \
+     client_id=backups-registry \
+     client_secret=<keycloak-generated-secret>
+   ```
+
+3. **Set Cloudflare secrets**:
+   ```bash
+   npx wrangler secret put OIDC_CLIENT_SECRET --env golder
+   ```
+
+See [Keycloak setup guide](docs/keycloak-setup.md) (TODO).
+
+### Basic auth (admin access, development only)
 
 ```bash
 npx wrangler secret put AUTH_USER
@@ -120,16 +158,6 @@ npx wrangler secret put AUTH_USER
 
 npx wrangler secret put AUTH_PASS
 # Enter: your-secure-password
-```
-
-### JWT/OIDC
-
-Set `JWT_ISSUER`, `JWT_AUDIENCE`, and optionally `JWKS_URI` as secrets:
-
-```bash
-npx wrangler secret put JWT_ISSUER
-npx wrangler secret put JWT_AUDIENCE
-npx wrangler secret put JWKS_URI
 ```
 
 ## Setup
@@ -172,8 +200,10 @@ routes = [
 ```bash
 #!/usr/bin/env bash
 # Submit a backup run report after your backup completes.
-curl -sf -X POST "https://backup-registry.example.com/v1/backup-runs" \
-  -H "Authorization: Bearer ${BACKUP_REGISTRY_TOKEN}" \
+# Requires: BACKUP_REGISTRY_URL and BACKUP_REGISTRY_TOKEN environment variables
+
+curl -sf -X POST "${BACKUP_REGISTRY_URL}/v1/backup-runs" \
+  -H "X-API-Key: ${BACKUP_REGISTRY_TOKEN}" \
   -H "Content-Type: application/json" \
   -d "$(jq -n \
     --arg run_id "$(uuidgen)" \
@@ -185,4 +215,15 @@ curl -sf -X POST "https://backup-registry.example.com/v1/backup-runs" \
     --argjson bytes "${BYTES_WRITTEN:-0}" \
     '{run_id:$run_id,job_name:$job_name,agent_id:$agent_id,start_time:$start_time,end_time:$end_time,status:$status,bytes_backed_up:$bytes}'
   )"
+```
+
+**Usage:**
+
+```bash
+export BACKUP_REGISTRY_URL="https://backups.golder.tech"
+export BACKUP_REGISTRY_TOKEN="<api-token-from-vault>"
+export JOB_NAME="postgres-daily"
+export START_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export STATUS="success"
+./agent-submit-backup.sh
 ```
