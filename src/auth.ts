@@ -39,7 +39,7 @@ export function getAuthConfig(env: Env): AuthConfig {
       authorizationEndpoint: `${issuer}/protocol/openid-connect/auth`,
       tokenEndpoint: `${issuer}/protocol/openid-connect/token`,
       clientId: env.JWT_AUDIENCE || 'backups-registry',
-      clientSecret: env.KEYCLOAK_CLIENT_SECRET || '',
+      clientSecret: env.OIDC_CLIENT_SECRET || '',
       redirectUri: '', // always derived from request origin at runtime
     };
   }
