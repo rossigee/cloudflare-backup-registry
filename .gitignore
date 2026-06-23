@@ -4,3 +4,4 @@ node_modules/
 *.png
 !docs/*.png
 .env
+.claude/
