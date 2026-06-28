@@ -6,10 +6,12 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy:golder": "wrangler deploy --env golder",
-    "deploy:wardle": "wrangler deploy --env wardle",
-    "deploy:timewarp": "wrangler deploy --env timewarp",
-    "build": "wrangler deploy --dry-run --env golder",
+    "dev:test": "AUTH_USER=testuser AUTH_PASS=testpass API_TOKENS=test-api-token wrangler dev --env testing",
+    "deploy:golder": "wrangler deploy --env golder -c sites/wrangler.golder.toml",
+    "deploy:wardle": "wrangler deploy --env wardle -c sites/wrangler.wardle.toml",
+    "deploy:timewarp": "wrangler deploy --env timewarp -c sites/wrangler.timewarp.toml",
+    "deploy:all": "npm run deploy:golder && npm run deploy:wardle && npm run deploy:timewarp",
+    "build": "wrangler deploy --dry-run --env golder -c sites/wrangler.golder.toml",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -18,7 +20,7 @@
     "@cloudflare/workers-types": "^4.20250401.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.5",
-    "wrangler": "^4.92.0"
+    "wrangler": "^4.105.0"
   },
   "dependencies": {
     "jose": "^6.2.3"

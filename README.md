@@ -162,38 +162,74 @@ npx wrangler secret put AUTH_PASS
 
 ## Setup
 
+### Site-specific configuration (sites/ directory)
+
+Site configuration lives in the `sites/` directory (gitignored). Each site has:
+- `sites/<site>.env` — site-specific variables
+- `sites/wrangler.<site>.toml` — site-specific wrangler config
+
+Create these from the templates (replace placeholders with your values):
+
+**sites/golder.env:**
+```bash
+VAULT_TENANT=rossgolderltd
+JWT_ISSUER=https://sso.your-domain.com/auth/realms/YourRealm
+BASE_URL=https://backups.your-domain.com
+CLOUDFLARE_ACCOUNT_ID=your-account-id
+```
+
+**sites/wrangler.<site>.toml:**
+```toml
+account_id = "your-account-id"
+routes = [{ pattern = "backups.your-domain.com", custom_domain = true }]
+vars = { SITE_NAME = "Your Site Backups", JWT_ISSUER = "https://sso.your-domain.com/auth/realms/YourRealm", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.your-domain.com" }
+
+[[durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
+```
+
 ### Local environment (.env)
 
 Create `.env` from Vault secrets (requires Vault access):
 
 ```bash
 vault login -method=oidc
-./.env.sh golder > .env      # or: wardle, timewarp
+source .env.sh golder   # sources secrets into current shell
 ```
 
-This pulls live credentials from Vault for the specified tenant:
+This pulls live credentials from Vault:
 - `infrastructure/cloudflare` → Cloudflare API token
 - `tenants/{golder,wardle,timewarp}/keycloak/clients/backups-registry` → OIDC client secret
 
-Each tenant has separate OIDC credentials. `.env` is gitignored — never commit it. Always regenerate from Vault for local development.
+`.env` is gitignored — never commit it. Always regenerate from Vault for local development.
 
 ## Deploy
 
 ```bash
-npm run deploy
+npm run deploy:golder    # deploys to golder
+npm run deploy:wardle    # deploys to wardle
+npm run deploy:timewarp  # deploys to timewarp
+npm run deploy:all       # deploys all sites
 ```
 
 Requires `CLOUDFLARE_API_TOKEN` in `.env` or set in environment, or run `npx wrangler login` first.
 
 ## Configuration
 
-`wrangler.toml` — update the custom domain to match your zone:
+Site-specific configuration is in `sites/wrangler.<site>.toml`. Update the `routes` and `vars` to match your domain:
 
 ```toml
-routes = [
-  { pattern = "backup-registry.example.com", custom_domain = true }
-]
+account_id = "your-account-id"
+routes = [{ pattern = "backup-registry.example.com", custom_domain = true }]
+vars = { SITE_NAME = "Your Site Backups", JWT_ISSUER = "https://sso.example.com/auth/realms/YourRealm", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backup-registry.example.com" }
+
+[[durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
 ```
+
+Secrets (OIDC_CLIENT_SECRET, API_TOKENS) are set via `wrangler secret put` and stored in Cloudflare's secret store, not in the repo.
 
 ## Agent example (shell)
 

@@ -4,4 +4,6 @@ node_modules/
 *.png
 !docs/*.png
 .env
+.env.*
+sites/
 .claude/

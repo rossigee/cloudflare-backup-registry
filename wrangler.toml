@@ -19,29 +19,14 @@ new_sqlite_classes = ["RateLimiter"]
 tag = "v3"
 deleted_classes = ["RateLimiter"]
 
-# Basic auth for the UI and API:
-# [vars]
-# AUTH_USER = "admin"
-# AUTH_PASS = "your-secure-password"
-
-# JWT/OIDC authentication (overrides basic auth):
-# JWT_ISSUER = "https://accounts.google.com"
-# JWT_AUDIENCE = "your-client-id.apps.googleusercontent.com"
-# JWKS_URI = ""  # defaults to {issuer}/.well-known/jwks.json
-
-# OAuth2/OIDC for UI login flow (requires JWT_ISSUER and JWT_AUDIENCE):
-# KEYCLOAK_CLIENT_SECRET = "your-client-secret"
-# BASE_URL = "https://your-domain.com"  # for OAuth2 redirect URI
-
-# API tokens for backup agents (comma-separated):
-# API_TOKENS = "tok1,tok2,tok3"
+# Site-specific config (non-secret). Secrets stored in Cloudflare via:
+#   wrangler secret put OIDC_CLIENT_SECRET --env <site>
+#   wrangler secret put API_TOKENS --env <site>
 
 [env.golder]
 account_id = "c1b74f148aee28025816e104a92622c5"
 routes = [{ pattern = "backups.golder.tech", custom_domain = true }]
 vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.golder.tech" }
-# Secrets (set via: wrangler secret put OIDC_CLIENT_SECRET --env golder)
-#                  (set via: wrangler secret put API_TOKENS --env golder)
 
 [[env.golder.durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -51,8 +36,6 @@ class_name = "BackupRegistry"
 account_id = "c319c02aa39a98bfaaad068b83c0b179"
 routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
 vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.wardle.online/auth/realms/Wardle", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.wardle.online" }
-# Secrets (set via: wrangler secret put OIDC_CLIENT_SECRET --env wardle)
-#                  (set via: wrangler secret put API_TOKENS --env wardle)
 
 [[env.wardle.durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -62,15 +45,13 @@ class_name = "BackupRegistry"
 account_id = "bd32abceb7ddba1b066a11732ae38c2f"
 routes = [{ pattern = "backups.timewarp.ws", custom_domain = true }]
 vars = { SITE_NAME = "Timewarp Backups", JWT_ISSUER = "https://sso.timewarp.ws/auth/realms/Timewarp", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.timewarp.ws" }
-# Secrets (set via: wrangler secret put OIDC_CLIENT_SECRET --env timewarp)
-#                  (set via: wrangler secret put API_TOKENS --env timewarp)
 
 [[env.timewarp.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
 
 [env.testing]
-vars = { AUTH_USER = "testuser", AUTH_PASS = "testpass", API_TOKENS = "test-api-token" }
+vars = { AUTH_USER = "${AUTH_USER}", AUTH_PASS = "${AUTH_PASS}", API_TOKENS = "${API_TOKENS}" }
 
 [[env.testing.durable_objects.bindings]]
 name = "BACKUP_STORE"

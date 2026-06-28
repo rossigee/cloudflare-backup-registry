@@ -10,6 +10,7 @@ export interface Env {
   API_TOKENS?: string;
   SITE_NAME?: string;
   DOCS_URL?: string;
+  OIDC_CLIENT_SECRET?: string;
   KEYCLOAK_CLIENT_SECRET?: string;
   BASE_URL?: string;
 }

@@ -1,11 +1,12 @@
 #!/bin/bash
 # Generate .env from Vault secrets for a specific tenant
 # Requires: vault login already authenticated
-# Usage: ./.env.sh [golder|wardle|timewarp] > .env
+# Usage: source .env.sh [golder|wardle|timewarp]
 
 set -euo pipefail
 
 TENANT="${1:-golder}"
+SITE_DIR="$(dirname "$0")/sites"
 VAULT_ADDR="${VAULT_ADDR:-https://vault.bankrut.lan}"
 export VAULT_ADDR
 
@@ -14,30 +15,14 @@ die() {
   exit 1
 }
 
-# Tenant config
-case "$TENANT" in
-  golder)
-    VAULT_TENANT="rossgolderltd"
-    JWT_ISSUER="https://sso.golder.tech/auth/realms/ROSSGolderLtd"
-    BASE_URL="https://backups.golder.tech"
-    CLOUDFLARE_ACCOUNT_ID="c1b74f148aee28025816e104a92622c5"
-    ;;
-  wardle)
-    VAULT_TENANT="wardle"
-    JWT_ISSUER="https://sso.wardle.online/auth/realms/Wardle"
-    BASE_URL="https://backups.wardle.online"
-    CLOUDFLARE_ACCOUNT_ID="c319c02aa39a98bfaaad068b83c0b179"
-    ;;
-  timewarp)
-    VAULT_TENANT="timewarp"
-    JWT_ISSUER="https://sso.timewarp.ws/auth/realms/Timewarp"
-    BASE_URL="https://backups.timewarp.ws"
-    CLOUDFLARE_ACCOUNT_ID="bd32abceb7ddba1b066a11732ae38c2f"
-    ;;
-  *)
-    die "Unknown tenant: $TENANT. Valid: golder, wardle, timewarp"
-    ;;
-esac
+# Check site config exists
+SITE_CONFIG="$SITE_DIR/$TENANT.env"
+if [[ ! -f "$SITE_CONFIG" ]]; then
+  die "Unknown tenant: $TENANT. Valid: golder, wardle, timewarp. Create $SITE_CONFIG first."
+fi
+
+# Source site-specific config (non-secret)
+source "$SITE_CONFIG"
 
 # Check Vault connectivity
 vault status > /dev/null 2>&1 || die "Cannot reach Vault at $VAULT_ADDR. Run: vault login -method=oidc"

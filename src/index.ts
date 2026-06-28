@@ -860,7 +860,10 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
   try {
     const tokenResp = await fetch(config.oauth2.tokenEndpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: { 
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Host': new URL(config.oauth2.tokenEndpoint).host,
+      },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
@@ -872,7 +875,8 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
 
     if (!tokenResp.ok) {
       const err = await tokenResp.text();
-      return new Response(`Token exchange failed: ${err}`, { status: 400 });
+      console.error('Token exchange failed:', tokenResp.status, err);
+      return new Response(`Token exchange failed (${tokenResp.status}): ${err}`, { status: 400 });
     }
 
     const tokens = await tokenResp.json() as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
