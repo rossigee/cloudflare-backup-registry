@@ -97,16 +97,18 @@ Three methods are supported, checked in order. If none are configured, all reque
 
 API tokens are the simplest and most secure method for automated backup scripts.
 
-**Generate tokens** — already set up in Cloudflare Workers for each tenant:
-- golder: `tenants/rossgolderltd/backups-registry/api-key` in Vault
-- wardle: `tenants/wardle/backups-registry/api-key` in Vault
-- timewarp: `tenants/timewarp/backups-registry/api-key` in Vault
+**Generate tokens** — store in your secret management system:
+```bash
+# Example: store token in Vault under your tenant path
+vault kv put tenants/my-org-id/backups-registry/api-key \
+  api_key="your-generated-token"
+```
 
 **Use in backup scripts:**
 
 ```bash
-curl -X POST https://backups.golder.tech/v1/backup-runs \
-  -H "X-API-Key: <token>" \
+curl -X POST https://backups.example.com/v1/backup-runs \
+  -H "X-API-Key: your-api-token" \
   -H "Content-Type: application/json" \
   -d '{
     "run_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -121,8 +123,8 @@ curl -X POST https://backups.golder.tech/v1/backup-runs \
 Or with Bearer token:
 
 ```bash
-curl -X POST https://backups.golder.tech/v1/backup-runs \
-  -H "Authorization: Bearer <token>" \
+curl -X POST https://backups.example.com/v1/backup-runs \
+  -H "Authorization: Bearer your-api-token" \
   -H "Content-Type: application/json" \
   -d '{ ... }'
 ```
@@ -131,21 +133,21 @@ curl -X POST https://backups.golder.tech/v1/backup-runs \
 
 For the web UI, configure JWT/OIDC to enable single sign-on via Keycloak. This requires:
 
-1. **Create Keycloak OIDC client** in each realm:
+1. **Create Keycloak OIDC client** in your realm:
    - Client ID: `backups-registry`
    - Access Type: `confidential`
-   - Valid Redirect URIs: `https://backups.<domain>/oauth/callback`
+   - Valid Redirect URIs: `https://backups.example.com/oauth/callback`
    
-2. **Store credentials in Vault** (example for golder):
+2. **Store credentials in Vault** (replace `my-org-id` with your Vault tenant path):
    ```bash
-   vault kv put tenants/rossgolderltd/keycloak/clients/backups-registry \
+   vault kv put tenants/my-org-id/keycloak/clients/backups-registry \
      client_id=backups-registry \
-     client_secret=<keycloak-generated-secret>
+     client_secret=your-keycloak-secret
    ```
 
 3. **Set Cloudflare secrets**:
    ```bash
-   npx wrangler secret put OIDC_CLIENT_SECRET --env golder
+   npx wrangler secret put OIDC_CLIENT_SECRET --env production
    ```
 
 See [Keycloak setup guide](docs/keycloak-setup.md) (TODO).
@@ -164,25 +166,23 @@ npx wrangler secret put AUTH_PASS
 
 ### Site-specific configuration (sites/ directory)
 
-Site configuration lives in the `sites/` directory (gitignored). Each site has:
-- `sites/<site>.env` — site-specific variables
-- `sites/wrangler.<site>.toml` — site-specific wrangler config
+Site configuration lives in the `sites/` directory (gitignored). Each deployment has:
+- `sites/<deployment-name>.env` — environment variables for your deployment
+- `sites/wrangler.<deployment-name>.toml` — Wrangler config for your deployment
 
-Create these from the templates (replace placeholders with your values):
-
-**sites/golder.env:**
+**Create sites/production.env** (replace values with your own):
 ```bash
-VAULT_TENANT=rossgolderltd
-JWT_ISSUER=https://sso.your-domain.com/auth/realms/YourRealm
-BASE_URL=https://backups.your-domain.com
-CLOUDFLARE_ACCOUNT_ID=your-account-id
+VAULT_TENANT=my-org-id
+JWT_ISSUER=https://sso.example.com/auth/realms/my-realm
+BASE_URL=https://backups.example.com
+CLOUDFLARE_ACCOUNT_ID=your-cloudflare-account-id
 ```
 
-**sites/wrangler.<site>.toml:**
+**Create sites/wrangler.production.toml**:
 ```toml
-account_id = "your-account-id"
-routes = [{ pattern = "backups.your-domain.com", custom_domain = true }]
-vars = { SITE_NAME = "Your Site Backups", JWT_ISSUER = "https://sso.your-domain.com/auth/realms/YourRealm", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.your-domain.com" }
+account_id = "your-cloudflare-account-id"
+routes = [{ pattern = "backups.example.com", custom_domain = true }]
+vars = { SITE_NAME = "Company Backups", JWT_ISSUER = "https://sso.example.com/auth/realms/my-realm", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.example.com" }
 
 [[durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -195,34 +195,47 @@ Create `.env` from Vault secrets (requires Vault access):
 
 ```bash
 vault login -method=oidc
-source .env.sh golder   # sources secrets into current shell
+source .env.sh production   # sources secrets into current shell
 ```
 
 This pulls live credentials from Vault:
 - `infrastructure/cloudflare` → Cloudflare API token
-- `tenants/{golder,wardle,timewarp}/keycloak/clients/backups-registry` → OIDC client secret
+- `tenants/my-org-id/keycloak/clients/backups-registry` → OIDC client secret
 
 `.env` is gitignored — never commit it. Always regenerate from Vault for local development.
 
-## Deploy
+### Update package.json scripts
 
-```bash
-npm run deploy:golder    # deploys to golder
-npm run deploy:wardle    # deploys to wardle
-npm run deploy:timewarp  # deploys to timewarp
-npm run deploy:all       # deploys all sites
+Add deployment scripts for your sites. In `package.json`, replace the deployment targets:
+
+```json
+"scripts": {
+  "dev": "wrangler dev",
+  "deploy:production": "wrangler deploy --env production -c sites/wrangler.production.toml",
+  "deploy:staging": "wrangler deploy --env staging -c sites/wrangler.staging.toml"
+}
 ```
 
-Requires `CLOUDFLARE_API_TOKEN` in `.env` or set in environment, or run `npx wrangler login` first.
+Then deploy:
+
+```bash
+source .env.sh production
+npm run deploy:production
+```
 
 ## Configuration
 
-Site-specific configuration is in `sites/wrangler.<site>.toml`. Update the `routes` and `vars` to match your domain:
+Update your site's `sites/wrangler.<deployment-name>.toml` to match your infrastructure:
 
 ```toml
-account_id = "your-account-id"
-routes = [{ pattern = "backup-registry.example.com", custom_domain = true }]
-vars = { SITE_NAME = "Your Site Backups", JWT_ISSUER = "https://sso.example.com/auth/realms/YourRealm", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backup-registry.example.com" }
+account_id = "your-cloudflare-account-id"
+routes = [{ pattern = "backups.example.com", custom_domain = true }]
+vars = { 
+  SITE_NAME = "Your Organization Backups", 
+  JWT_ISSUER = "https://sso.example.com/auth/realms/your-realm", 
+  JWT_AUDIENCE = "backups-registry", 
+  BASE_URL = "https://backups.example.com" 
+}
 
 [[durable_objects.bindings]]
 name = "BACKUP_STORE"
@@ -253,11 +266,11 @@ curl -sf -X POST "${BACKUP_REGISTRY_URL}/v1/backup-runs" \
   )"
 ```
 
-**Usage:**
+**Usage** (replace with your domain and token):
 
 ```bash
-export BACKUP_REGISTRY_URL="https://backups.golder.tech"
-export BACKUP_REGISTRY_TOKEN="<api-token-from-vault>"
+export BACKUP_REGISTRY_URL="https://backups.example.com"
+export BACKUP_REGISTRY_TOKEN="your-api-token-from-vault"
 export JOB_NAME="postgres-daily"
 export START_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 export STATUS="success"

@@ -7,11 +7,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "dev:test": "AUTH_USER=testuser AUTH_PASS=testpass API_TOKENS=test-api-token wrangler dev --env testing",
-    "deploy:golder": "wrangler deploy --env golder -c sites/wrangler.golder.toml",
-    "deploy:wardle": "wrangler deploy --env wardle -c sites/wrangler.wardle.toml",
-    "deploy:timewarp": "wrangler deploy --env timewarp -c sites/wrangler.timewarp.toml",
-    "deploy:all": "npm run deploy:golder && npm run deploy:wardle && npm run deploy:timewarp",
-    "build": "wrangler deploy --dry-run --env golder -c sites/wrangler.golder.toml",
+    "deploy:production": "wrangler deploy --env production -c sites/wrangler.production.toml",
+    "deploy:staging": "wrangler deploy --env staging -c sites/wrangler.staging.toml",
+    "build": "wrangler deploy --dry-run --env production -c sites/wrangler.production.toml",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
