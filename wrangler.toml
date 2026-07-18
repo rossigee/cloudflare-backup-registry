@@ -26,7 +26,7 @@ deleted_classes = ["RateLimiter"]
 [env.golder]
 account_id = "c1b74f148aee28025816e104a92622c5"
 routes = [{ pattern = "backups.golder.tech", custom_domain = true }]
-vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.golder.tech" }
+vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.golder.tech", API_TOKENS = "d6b54bcdaf61916f0c475910459966d733b9f8ae9d952ef8" }
 
 [[env.golder.durable_objects.bindings]]
 name = "BACKUP_STORE"
