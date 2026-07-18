@@ -850,33 +850,44 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
   }
 
   const config = getAuthConfig(env);
-  if (!config.oauth2) {
-    console.error('OAuth2 not configured');
-    return new Response('OAuth2 not configured', { status: 500 });
+
+  if (!config.oauth2 || !config.jwtIssuer) {
+    const debugInfo = `\nconfig.oauth2: ${!!config.oauth2}\nconfig.jwtIssuer: ${config.jwtIssuer}`;
+    return new Response(`OAuth2 not configured${debugInfo}`, { status: 500 });
   }
 
   const redirectUri = `${url.origin}/oauth/callback`;
+  const tokenEndpoint = config.oauth2.tokenEndpoint;
+  const clientSecret = config.oauth2.clientSecret;
 
   try {
-    const tokenResp = await fetch(config.oauth2.tokenEndpoint, {
+    // Build request body manually to avoid any URLSearchParams encoding issues
+    const bodyParams = [
+      `grant_type=authorization_code`,
+      `code=${encodeURIComponent(code)}`,
+      `redirect_uri=${encodeURIComponent(redirectUri)}`,
+      `client_id=${encodeURIComponent(config.oauth2.clientId)}`,
+      `client_secret=${encodeURIComponent(clientSecret)}`,
+    ];
+    const bodyStr = bodyParams.join('&');
+
+    console.log('Exchanging auth code at:', tokenEndpoint);
+    console.log('Request body params: grant_type, code, redirect_uri, client_id, client_secret');
+
+    const tokenResp = await fetch(tokenEndpoint, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Host': new URL(config.oauth2.tokenEndpoint).host,
+        'User-Agent': 'cloudflare-backup-registry/0.5.2',
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-        client_id: config.oauth2.clientId,
-        client_secret: config.oauth2.clientSecret,
-      }),
+      body: bodyStr,
     });
 
+    const err = await tokenResp.text();
+
     if (!tokenResp.ok) {
-      const err = await tokenResp.text();
-      console.error('Token exchange failed:', tokenResp.status, err);
-      return new Response(`Token exchange failed (${tokenResp.status}): ${err}`, { status: 400 });
+      const debugInfo = `\n\nDEBUG INFO:\nToken Endpoint: ${tokenEndpoint}\nHTTP Status: ${tokenResp.status}\nClient ID: ${config.oauth2.clientId}\nJWT Issuer: ${config.jwtIssuer}\nResponse (first 300 chars): ${err.substring(0, 300)}`;
+      return new Response(`Token exchange failed (${tokenResp.status}): ${err}${debugInfo}`, { status: 400 });
     }
 
     const tokens = await tokenResp.json() as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
