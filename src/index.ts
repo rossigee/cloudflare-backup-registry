@@ -883,14 +883,14 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
       body: bodyStr,
     });
 
-    const err = await tokenResp.text();
+    const respText = await tokenResp.text();
 
     if (!tokenResp.ok) {
-      const debugInfo = `\n\nDEBUG INFO:\nToken Endpoint: ${tokenEndpoint}\nHTTP Status: ${tokenResp.status}\nClient ID: ${config.oauth2.clientId}\nJWT Issuer: ${config.jwtIssuer}\nResponse (first 300 chars): ${err.substring(0, 300)}`;
-      return new Response(`Token exchange failed (${tokenResp.status}): ${err}${debugInfo}`, { status: 400 });
+      const debugInfo = `\n\nDEBUG INFO:\nToken Endpoint: ${tokenEndpoint}\nHTTP Status: ${tokenResp.status}\nClient ID: ${config.oauth2.clientId}\nJWT Issuer: ${config.jwtIssuer}\nResponse (first 300 chars): ${respText.substring(0, 300)}`;
+      return new Response(`Token exchange failed (${tokenResp.status}): ${respText}${debugInfo}`, { status: 400 });
     }
 
-    const tokens = await tokenResp.json() as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
+    const tokens = JSON.parse(respText) as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
     const redirectPath = state ? atob(decodeURIComponent(state)) : '/';
 
     const sessionTokens = {
