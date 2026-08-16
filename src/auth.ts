@@ -116,9 +116,12 @@ async function validateJWT(token: string, config: AuthConfig): Promise<boolean> 
   }
 
   try {
+    // For service account tokens (client_credentials), audience might be null
+    // Only validate audience if the token actually has one
+    const jwtAudience = config.jwtAudience || undefined;
     await jwtVerify(token, getJWKS(jwksUri), {
       issuer: config.jwtIssuer,
-      audience: config.jwtAudience || undefined,
+      audience: jwtAudience,
     });
     return true;
   } catch (e) {
