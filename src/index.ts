@@ -298,11 +298,15 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
         : '';
       const durationMs = new Date(run.end_time).getTime() - new Date(run.start_time).getTime();
       const durationSort = isNaN(durationMs) || durationMs < 0 ? -1 : durationMs;
-      rows += `<tr>
+      const hoursSinceRun = (new Date().getTime() - new Date(run.end_time).getTime()) / (1000 * 60 * 60);
+      const isStale = hoursSinceRun > 72;
+      const staleClass = isStale ? ' stale' : '';
+      const staleIndicator = isStale ? `<span class="stale-badge" title="Last run ${Math.floor(hoursSinceRun)} hours ago">⚠</span> ` : '';
+      rows += `<tr class="run-row${staleClass}">
         <td data-sort="${escapeHtml(run.job_name.toLowerCase())}">${jobCell}</td>
         <td data-sort="${escapeHtml(run.agent_id.toLowerCase())}">${escapeHtml(run.agent_id)}</td>
         <td data-sort="${escapeHtml(run.status)}">${statusBadge(run.status)}</td>
-        <td data-sort="${escapeHtml(run.start_time)}">${escapeHtml(formatTime(run.start_time))}</td>
+        <td data-sort="${escapeHtml(run.start_time)}">${staleIndicator}${escapeHtml(formatTime(run.start_time))}</td>
         <td data-sort="${durationSort}">${escapeHtml(formatDuration(run.start_time, run.end_time))}</td>
         <td data-sort="${run.bytes_backed_up ?? -1}">${escapeHtml(formatBytes(run.bytes_backed_up))}</td>
         <td data-sort="${escapeHtml(run.encryption_status || '')}">${encBadge(run.encryption_status)}</td>
@@ -398,6 +402,9 @@ async function handleUI(request: Request, env: Env, siteName: string, docsUrl: s
     .history-col { white-space: nowrap; }
     .history-link { color: #888; font-size: 12px; text-decoration: none; border: 1px solid #555; border-radius: 10px; padding: 1px 8px; }
     .history-link:hover { color: #4fc3f7; border-color: #4fc3f7; }
+    tr.run-row.stale { background: #3a2a1a; border-left: 3px solid #ff9800; }
+    tr.run-row.stale:hover td { background-color: #4a3a2a; }
+    .stale-badge { color: #ff9800; font-size: 14px; font-weight: bold; margin-right: 6px; }
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .footer { margin-top: 20px; font-size: 12px; color: #888; text-align: center; padding: 16px; border-top: 1px solid #444; }
     .footer-nav { margin-bottom: 12px; display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
