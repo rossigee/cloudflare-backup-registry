@@ -1,5 +1,6 @@
-# Site-specific config for wardle
-# DO NOT COMMIT - Add to .gitignore
+name = "backup-registry-wardle"
+main = "src/index.ts"
+compatibility_date = "2026-09-02"
 
 account_id = "c319c02aa39a98bfaaad068b83c0b179"
 routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
@@ -8,3 +9,7 @@ vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.wardle.online/a
 [[durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BackupRegistry"]

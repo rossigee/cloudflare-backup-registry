@@ -1,5 +1,6 @@
-# Site-specific config for golder
-# DO NOT COMMIT - Add to .gitignore
+name = "backup-registry-golder"
+main = "src/index.ts"
+compatibility_date = "2026-09-02"
 
 account_id = "c1b74f148aee28025816e104a92622c5"
 routes = [{ pattern = "backups.golder.tech", custom_domain = true }]
@@ -8,3 +9,7 @@ vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/aut
 [[durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BackupRegistry"]
