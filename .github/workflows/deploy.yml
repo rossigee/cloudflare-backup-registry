@@ -48,6 +48,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Stagger deployments to avoid rate limiting
+        run: |
+          case "${{ matrix.env }}" in
+            wardle) sleep 20 ;;
+            timewarp) sleep 40 ;;
+          esac
+
       - name: Deploy to ${{ matrix.env }}
         run: |
           ENV_UPPER=$(echo "${{ matrix.env }}" | tr '[:lower:]' '[:upper:]')
