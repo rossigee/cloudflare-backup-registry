@@ -46,13 +46,16 @@ jobs:
 
       - run: npm ci
 
-      - name: Fetch configuration from Vault
+      - name: Create wrangler config from secrets
         run: |
           mkdir -p sites
-          vault kv get -format=json "secret/backup-registry/wrangler.${{ matrix.env }}" | jq -r '.data.data.config' > sites/wrangler.${{ matrix.env }}.toml
+          ENV_UPPER=$(echo "${{ matrix.env }}" | tr '[:lower:]' '[:upper:]')
+          CONFIG_VAR="WRANGLER_CONFIG_${ENV_UPPER}"
+          echo "${!CONFIG_VAR}" > sites/wrangler.${{ matrix.env }}.toml
         env:
-          VAULT_ADDR: ${{ secrets.VAULT_ADDR }}
-          VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+          WRANGLER_CONFIG_GOLDER: ${{ secrets.WRANGLER_CONFIG_GOLDER }}
+          WRANGLER_CONFIG_WARDLE: ${{ secrets.WRANGLER_CONFIG_WARDLE }}
+          WRANGLER_CONFIG_TIMEWARP: ${{ secrets.WRANGLER_CONFIG_TIMEWARP }}
 
       - name: Deploy to ${{ matrix.env }}
         run: |
