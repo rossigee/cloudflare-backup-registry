@@ -1,0 +1,10 @@
+# Site-specific config for wardle
+# DO NOT COMMIT - Add to .gitignore
+
+account_id = "c319c02aa39a98bfaaad068b83c0b179"
+routes = [{ pattern = "backups.wardle.online", custom_domain = true }]
+vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.wardle.online/auth/realms/Wardle", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.wardle.online" }
+
+[[durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"

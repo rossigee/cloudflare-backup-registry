@@ -46,17 +46,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Create wrangler config from secrets
-        run: |
-          mkdir -p sites
-          ENV_UPPER=$(echo "${{ matrix.env }}" | tr '[:lower:]' '[:upper:]')
-          CONFIG_VAR="WRANGLER_CONFIG_${ENV_UPPER}"
-          echo "${!CONFIG_VAR}" > sites/wrangler.${{ matrix.env }}.toml
-        env:
-          WRANGLER_CONFIG_GOLDER: ${{ secrets.WRANGLER_CONFIG_GOLDER }}
-          WRANGLER_CONFIG_WARDLE: ${{ secrets.WRANGLER_CONFIG_WARDLE }}
-          WRANGLER_CONFIG_TIMEWARP: ${{ secrets.WRANGLER_CONFIG_TIMEWARP }}
-
       - name: Deploy to ${{ matrix.env }}
         run: |
           ENV_UPPER=$(echo "${{ matrix.env }}" | tr '[:lower:]' '[:upper:]')

@@ -1,0 +1,10 @@
+# Site-specific config for timewarp
+# DO NOT COMMIT - Add to .gitignore
+
+account_id = "bd32abceb7ddba1b066a11732ae38c2f"
+routes = [{ pattern = "backups.timewarp.ws", custom_domain = true }]
+vars = { SITE_NAME = "Timewarp Backups", JWT_ISSUER = "https://sso.timewarp.ws/auth/realms/Timewarp", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.timewarp.ws" }
+
+[[durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
