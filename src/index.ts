@@ -939,6 +939,7 @@ export default {
         return handleLogout();
       }
 
+      if (path === '/test') return new Response(`OK - Worker alive. Version: ${VERSION}`, { status: 200 });
       if (path === '/health') return withAuth(() => handleHealth(env));
       if (path === '/favicon.ico') return handleFavicon();
 
