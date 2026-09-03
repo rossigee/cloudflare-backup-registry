@@ -885,7 +885,7 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'cloudflare-backup-registry/0.5.2',
+        'User-Agent': `cloudflare-backup-registry/${VERSION}`,
       },
       body: bodyStr,
     });
