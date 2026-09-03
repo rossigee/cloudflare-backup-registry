@@ -943,7 +943,7 @@ export default {
       if (path === '/health') return withAuth(() => handleHealth(env));
       if (path === '/favicon.ico') return handleFavicon();
 
-      if ((path === '/' || path === '') && method === 'GET') return withAuth(() => handleUI(request, env, getSiteName(request, env), env.DOCS_URL || ''));
+      if ((path === '/' || path === '') && method === 'GET') return handleUI(request, env, getSiteName(request, env), env.DOCS_URL || '');
       if (path === '/docs' && method === 'GET') return withAuth(() => handleDocs());
       if (path === '/metrics' && method === 'GET') return withAuth(() => handleMetrics(env));
 
