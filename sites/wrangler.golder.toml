@@ -3,7 +3,6 @@ main = "src/index.ts"
 compatibility_date = "2026-09-02"
 
 account_id = "c1b74f148aee28025816e104a92622c5"
-zone_id = "64357a64cae1e1cbe197788cd2c60fe8"
 routes = [{ pattern = "backups.golder.tech", custom_domain = true, zone_id = "64357a64cae1e1cbe197788cd2c60fe8" }]
 vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/auth/realms/ROSSGolderLtd", JWT_AUDIENCE = "backups-registry", BASE_URL = "https://backups.golder.tech" }
 
