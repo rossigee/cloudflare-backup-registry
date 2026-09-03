@@ -182,6 +182,7 @@ async function refreshToken(refreshToken: string, config: AuthConfig): Promise<S
 
 export async function authenticate(request: Request, env: Env, config?: AuthConfig): Promise<{ authenticated: boolean; redirect?: string }> {
   const cfg = config ?? getAuthConfig(env);
+  console.log('authenticate: config', { jwtIssuer: cfg.jwtIssuer, apiTokens: cfg.apiTokens.size, oauth2: !!cfg.oauth2 });
   if (!isConfigured(cfg)) return { authenticated: true };
 
   const url = new URL(request.url);
@@ -223,7 +224,9 @@ export async function authenticate(request: Request, env: Env, config?: AuthConf
   if (apiKeyHeader && validateApiToken(apiKeyHeader, cfg)) return { authenticated: true };
 
   const accept = request.headers.get('Accept') || '';
+  console.log('authenticate: no auth headers found, checking OAuth2', { oauth2: !!cfg.oauth2, accept });
   if (cfg.oauth2 && (accept.includes('text/html') || accept.includes('*/*') || !accept)) {
+    console.log('authenticate: redirecting to OAuth2');
     const state = btoa(url.pathname + url.search);
     const redirectUri = `${url.origin}/oauth/callback`;
     const authUrl = new URL(cfg.oauth2.authorizationEndpoint);
