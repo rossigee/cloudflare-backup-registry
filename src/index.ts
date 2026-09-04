@@ -896,23 +896,25 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
       const debugInfo = `Token Endpoint: ${tokenEndpoint}, HTTP Status: ${tokenResp.status}, Client ID: ${config.oauth2.clientId}, JWT Issuer: ${config.jwtIssuer}, Response (first 300 chars): ${respText.substring(0, 300)}`;
       console.error('OAuth2 token exchange failed:', debugInfo);
 
-      // Check if this is a retry attempt (query param prevents infinite loops)
-      const hasRetried = url.searchParams.has('auth_retry');
-      if (hasRetried) {
-        // Already retried once, show clean error instead of looping
+      // Check if this is a retry (cookie prevents infinite loops)
+      const retryCount = parseInt(request.headers.get('Cookie')?.match(/oauth_retry=(\d)/)?.[1] || '0', 10);
+      if (retryCount >= 1) {
+        // Already retried, show clean error instead of looping
         return new Response(`<html><body style="font-family: sans-serif; margin: 2rem;"><h1>Login failed</h1><p>Unable to complete authentication. Please contact an administrator or try again later.</p><p><a href="/">Return home</a></p></body></html>`, {
           status: 401,
           headers: { 'Content-Type': 'text/html; charset=utf-8', ...SECURITY_HEADERS }
         });
       }
 
-      // Redirect back to login once, with retry flag to prevent loops
+      // Redirect back to login once (cookie tracks the retry to prevent loops)
       const loginUrl = new URL(config.oauth2.authorizationEndpoint);
       loginUrl.searchParams.set('client_id', config.oauth2.clientId);
-      loginUrl.searchParams.set('redirect_uri', `${url.origin}/oauth/callback?auth_retry=1`);
+      loginUrl.searchParams.set('redirect_uri', `${url.origin}/oauth/callback`);
       loginUrl.searchParams.set('response_type', 'code');
       loginUrl.searchParams.set('scope', 'openid');
-      return Response.redirect(loginUrl.toString(), 302);
+      const resp = Response.redirect(loginUrl.toString(), 302);
+      resp.headers.set('Set-Cookie', `oauth_retry=1; Path=/; HttpOnly; Secure; Max-Age=60; SameSite=Lax`);
+      return resp;
     }
 
     const tokens = JSON.parse(respText) as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
