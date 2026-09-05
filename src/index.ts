@@ -991,16 +991,16 @@ export default {
       }
 
       if (path === '/v1/backup-runs') {
-        if (method === 'POST') return withAuth(() => handleSubmit(request, env));
-        if (method === 'GET') return withAuth(() => handleList(request, env));
+        if (method === 'POST') return handleSubmit(request, env);
+        if (method === 'GET') return handleList(request, env);
         return new Response('Method Not Allowed', { status: 405 });
       }
 
       if (path.startsWith('/v1/backup-runs/')) {
         const runId = decodeURIComponent(path.slice('/v1/backup-runs/'.length));
         if (!runId) return new Response('Missing run_id', { status: 400 });
-        if (method === 'GET') return withAuth(() => handleGetRun(runId, env));
-        if (method === 'DELETE') return withAuth(() => handleDeleteRun(runId, env));
+        if (method === 'GET') return handleGetRun(runId, env);
+        if (method === 'DELETE') return handleDeleteRun(runId, env);
         return new Response('Method Not Allowed', { status: 405 });
       }
 
