@@ -925,9 +925,13 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
       loginUrl.searchParams.set('redirect_uri', `${url.origin}/oauth/callback`);
       loginUrl.searchParams.set('response_type', 'code');
       loginUrl.searchParams.set('scope', 'openid');
-      const resp = Response.redirect(loginUrl.toString(), 302);
-      resp.headers.set('Set-Cookie', `oauth_retry=1; Path=/; HttpOnly; Secure; Max-Age=60; SameSite=Lax`);
-      return resp;
+      return new Response(null, {
+        status: 302,
+        headers: {
+          'Location': loginUrl.toString(),
+          'Set-Cookie': `oauth_retry=1; Path=/; HttpOnly; Secure; Max-Age=60; SameSite=Lax`,
+        },
+      });
     }
 
     const tokens = JSON.parse(respText) as { access_token: string; id_token?: string; refresh_token?: string; expires_in?: number };
