@@ -23,6 +23,10 @@ export interface SessionTokens {
 }
 
 export function getAuthConfig(env: Env): AuthConfig {
+  console.log('getAuthConfig: JWT_ISSUER =', env.JWT_ISSUER);
+  console.log('getAuthConfig: OIDC_CLIENT_SECRET =', env.OIDC_CLIENT_SECRET ? 'SET' : 'NOT SET');
+  console.log('getAuthConfig: OIDC_CLIENT_SECRET length =', env.OIDC_CLIENT_SECRET?.length ?? 0);
+
   const basic =
     env.AUTH_USER && env.AUTH_PASS
       ? { username: env.AUTH_USER, password: env.AUTH_PASS }

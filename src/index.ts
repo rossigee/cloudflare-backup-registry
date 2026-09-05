@@ -3,7 +3,7 @@ import { authenticate, unauthorized, getAuthConfig, createSessionCookie, clearSe
 
 export { BackupRegistry };
 
-const VERSION = '0.5.13';
+const VERSION = '0.5.14';
 
 const FAVICON_B64 = 'AAABAAEAEBAAAAEAIABoBAAAFgAAACgAAAAQAAAAIAAAAAEAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//98NP//fDT//3w0//AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 const VALID_STATUSES: BackupStatus[] = ['success', 'failure', 'partial'];
@@ -860,7 +860,18 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
 
   if (!config.oauth2 || !config.jwtIssuer) {
     const debugInfo = `\nconfig.oauth2: ${!!config.oauth2}\nconfig.jwtIssuer: ${config.jwtIssuer}`;
+    console.error('OAuth2 not configured:', debugInfo);
     return new Response(`OAuth2 not configured${debugInfo}`, { status: 500 });
+  }
+
+  if (!config.oauth2.clientSecret) {
+    console.error('OIDC_CLIENT_SECRET is empty. env:', JSON.stringify({
+      JWT_ISSUER: env.JWT_ISSUER,
+      OIDC_CLIENT_SECRET_type: typeof env.OIDC_CLIENT_SECRET,
+      OIDC_CLIENT_SECRET_value: env.OIDC_CLIENT_SECRET,
+      keys: Object.keys(env)
+    }));
+    return new Response(`OIDC_CLIENT_SECRET not configured. env keys: ${Object.keys(env).join(', ')}`, { status: 500 });
   }
 
   const redirectUri = `${url.origin}/oauth/callback`;
@@ -879,6 +890,8 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
     const bodyStr = bodyParams.join('&');
 
     console.log('Exchanging auth code at:', tokenEndpoint);
+    console.log('Client ID:', config.oauth2.clientId);
+    console.log('Client Secret (first 8 chars):', clientSecret.substring(0, 8));
     console.log('Request body params: grant_type, code, redirect_uri, client_id, client_secret');
 
     const tokenResp = await fetch(tokenEndpoint, {
@@ -927,8 +940,9 @@ async function handleOAuthCallback(request: Request, env: Env): Promise<Response
     };
     return createSessionCookie(sessionTokens, redirectPath);
   } catch (err) {
-    console.error('OAuth2 token exchange error:', err);
-    return new Response('Token exchange failed', { status: 500 });
+    const errMsg = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error('OAuth2 CATCH BLOCK - token exchange error:', errMsg);
+    return new Response(`OAUTH_CATCH: ${errMsg}`, { status: 500 });
   }
 }
 
@@ -959,7 +973,7 @@ export default {
         return handleLogout();
       }
 
-      if (path === '/test') return new Response(`OK - Worker alive. Version: ${VERSION}`, { status: 200 });
+      if (path === '/test') return new Response(`OK - Worker alive. Version: ${VERSION}. Timestamp: ${Date.now()}`, { status: 200 });
       if (path === '/health') return withAuth(() => handleHealth(env));
       if (path === '/favicon.ico') return handleFavicon();
 
