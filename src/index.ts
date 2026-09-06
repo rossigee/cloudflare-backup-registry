@@ -970,6 +970,15 @@ export default {
       return handler();
     };
 
+    const withTokenAuth = (token: string | undefined, handler: () => Promise<Response>): Promise<Response> => {
+      if (!token) return Promise.resolve(new Response('Unauthorized', { status: 401 }));
+      const authHeader = request.headers.get('Authorization') || '';
+      if (authHeader.startsWith('Bearer ') && authHeader.slice(7) === token) {
+        return handler();
+      }
+      return Promise.resolve(new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="metrics"' } }));
+    };
+
     try {
       if (path === '/oauth/callback') {
         return handleOAuthCallback(request, env);
@@ -983,7 +992,7 @@ export default {
 
       if ((path === '/' || path === '') && method === 'GET') return withAuth(() => handleUI(request, env, getSiteName(request, env), env.DOCS_URL || ''));
       if (path === '/docs' && method === 'GET') return withAuth(() => handleDocs());
-      if (path === '/metrics' && method === 'GET') return handleMetrics(env);
+      if (path === '/metrics' && method === 'GET') return withTokenAuth(env.METRICS_API_TOKEN, () => Promise.resolve(handleMetrics(env)));
 
       if (path.startsWith('/run/') && method === 'GET') {
         const runId = decodeURIComponent(path.slice('/run/'.length));
