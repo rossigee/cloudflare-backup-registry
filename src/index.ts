@@ -971,10 +971,16 @@ export default {
     };
 
     const withTokenAuth = (token: string | undefined, handler: () => Promise<Response>): Promise<Response> => {
-      if (!token) return Promise.resolve(new Response('Unauthorized', { status: 401 }));
       const authHeader = request.headers.get('Authorization') || '';
-      if (authHeader.startsWith('Bearer ') && authHeader.slice(7) === token) {
-        return handler();
+      if (!token) {
+        console.error('METRICS_API_TOKEN not configured');
+        return Promise.resolve(new Response('Unauthorized', { status: 401 }));
+      }
+      if (authHeader.startsWith('Bearer ')) {
+        const providedToken = authHeader.slice(7);
+        if (providedToken === token) {
+          return handler();
+        }
       }
       return Promise.resolve(new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="metrics"' } }));
     };
@@ -992,7 +998,17 @@ export default {
 
       if ((path === '/' || path === '') && method === 'GET') return withAuth(() => handleUI(request, env, getSiteName(request, env), env.DOCS_URL || ''));
       if (path === '/docs' && method === 'GET') return withAuth(() => handleDocs());
-      if (path === '/metrics' && method === 'GET') return withTokenAuth(env.METRICS_API_TOKEN, () => Promise.resolve(handleMetrics(env)));
+      if (path === '/metrics' && method === 'GET') {
+        if (!env.METRICS_API_TOKEN) {
+          return new Response('Unauthorized: METRICS_API_TOKEN not configured', { status: 401 });
+        }
+        const authHeader = request.headers.get('Authorization') || '';
+        const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+        if (provided === env.METRICS_API_TOKEN) {
+          return handleMetrics(env);
+        }
+        return new Response('Unauthorized', { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="metrics"' } });
+      }
 
       if (path.startsWith('/run/') && method === 'GET') {
         const runId = decodeURIComponent(path.slice('/run/'.length));

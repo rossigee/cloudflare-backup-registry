@@ -13,6 +13,7 @@ export interface Env {
   OIDC_CLIENT_SECRET?: string;
   KEYCLOAK_CLIENT_SECRET?: string;
   BASE_URL?: string;
+  METRICS_API_TOKEN?: string;
 }
 
 export type BackupStatus = 'success' | 'failure' | 'partial';

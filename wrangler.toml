@@ -32,6 +32,10 @@ vars = { SITE_NAME = "Golder Backups", JWT_ISSUER = "https://sso.golder.tech/aut
 name = "OIDC_CLIENT_SECRET"
 type = "secret_text"
 
+[[env.golder.bindings]]
+name = "METRICS_API_TOKEN"
+type = "secret_text"
+
 [[env.golder.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
@@ -45,6 +49,10 @@ vars = { SITE_NAME = "Wardle Backups", JWT_ISSUER = "https://sso.wardle.online/a
 name = "OIDC_CLIENT_SECRET"
 type = "secret_text"
 
+[[env.wardle.bindings]]
+name = "METRICS_API_TOKEN"
+type = "secret_text"
+
 [[env.wardle.durable_objects.bindings]]
 name = "BACKUP_STORE"
 class_name = "BackupRegistry"
@@ -56,6 +64,10 @@ vars = { SITE_NAME = "Timewarp Backups", JWT_ISSUER = "https://sso.timewarp.ws/a
 
 [[env.timewarp.bindings]]
 name = "OIDC_CLIENT_SECRET"
+type = "secret_text"
+
+[[env.timewarp.bindings]]
+name = "METRICS_API_TOKEN"
 type = "secret_text"
 
 [[env.timewarp.durable_objects.bindings]]

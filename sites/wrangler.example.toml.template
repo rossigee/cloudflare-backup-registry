@@ -1,0 +1,17 @@
+# Template for site-specific wrangler config
+# Copy this file and replace 'example' with your deployment name
+# Example: cp sites/wrangler.example.toml.template sites/wrangler.production.toml
+# Then edit with your actual values
+
+account_id = "your-cloudflare-account-id"
+routes = [{ pattern = "backups.example.com", custom_domain = true }]
+vars = {
+  SITE_NAME = "Your Organization Backups",
+  JWT_ISSUER = "https://auth.example.com/auth/realms/your-realm",
+  JWT_AUDIENCE = "backups-registry",
+  BASE_URL = "https://backups.example.com"
+}
+
+[[durable_objects.bindings]]
+name = "BACKUP_STORE"
+class_name = "BackupRegistry"
