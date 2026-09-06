@@ -983,7 +983,7 @@ export default {
 
       if ((path === '/' || path === '') && method === 'GET') return withAuth(() => handleUI(request, env, getSiteName(request, env), env.DOCS_URL || ''));
       if (path === '/docs' && method === 'GET') return withAuth(() => handleDocs());
-      if (path === '/metrics' && method === 'GET') return withAuth(() => handleMetrics(env));
+      if (path === '/metrics' && method === 'GET') return handleMetrics(env);
 
       if (path.startsWith('/run/') && method === 'GET') {
         const runId = decodeURIComponent(path.slice('/run/'.length));
