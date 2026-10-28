@@ -173,6 +173,40 @@ async function handleSubmit(request: Request, env: Env): Promise<Response> {
   }));
 }
 
+async function handleImport(request: Request, env: Env): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  if (!Array.isArray(body)) {
+    return Response.json({ error: 'Body must be a JSON array of runs' }, { status: 400 });
+  }
+  const store = getStore(env);
+  let imported = 0;
+  for (const [index, item] of body.entries()) {
+    const result = validatePayload(item);
+    if (!result.ok) {
+      return Response.json({ error: `run ${index}: ${result.error}` }, { status: 400 });
+    }
+    const receivedAt = (item as Record<string, unknown>).received_at;
+    if (typeof receivedAt !== 'string' || isNaN(new Date(receivedAt).getTime())) {
+      return Response.json({ error: `run ${index}: received_at must be a valid ISO8601 timestamp` }, { status: 400 });
+    }
+    const res = await store.fetch(new Request('http://do/submit', {
+      method: 'POST',
+      body: JSON.stringify({ ...result.run, received_at: receivedAt }),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    if (!res.ok) {
+      return Response.json({ error: `run ${index}: store returned ${res.status}` }, { status: 500 });
+    }
+    imported++;
+  }
+  return Response.json({ imported }, { status: 201 });
+}
+
 async function handleList(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const params = new URLSearchParams();
@@ -1013,6 +1047,10 @@ export default {
       if (path.startsWith('/run/') && method === 'GET') {
         const runId = decodeURIComponent(path.slice('/run/'.length));
         if (runId) return withAuth(() => handleRunDetail(runId, env));
+      }
+
+      if (path === '/v1/backup-runs/import' && method === 'POST') {
+        return withTokenAuth(env.METRICS_API_TOKEN, () => handleImport(request, env));
       }
 
       if (path === '/v1/backup-runs') {
